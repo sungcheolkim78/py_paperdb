@@ -1,0 +1,9 @@
+README.md
+setup.cfg
+setup.py
+py_paperdb.egg-info/PKG-INFO
+py_paperdb.egg-info/SOURCES.txt
+py_paperdb.egg-info/dependency_links.txt
+py_paperdb.egg-info/entry_points.txt
+py_paperdb.egg-info/requires.txt
+py_paperdb.egg-info/top_level.txt
