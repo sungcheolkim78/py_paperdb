@@ -9,10 +9,85 @@ from bibtexparser.bparser import BibTexParser
 from bibtexparser.bibdatabase import BibDatabase
 from bibtexparser.bwriter import BibTexWriter
 
-from pdf_read import convertPDF
+import py_readpaper
+
+class PaperDB(object):
+    """ paper database using pandas """
+
+    def __init__(self, dirname='.', bibfilename='master_db.bib', update=False):
+        """ initialize database """
+
+        self._bibfilename = bibfilename
+        self._filedb = read_dir(dirname=dirname)
+        self._bibdb = read_paperdb(bibfilename, frombib=update)
+        self._currentpaper = ''
+
+    def head(self, n=10, full=True, items=[]):
+        """ show top items """
+
+        if full and (len(items) == 0):
+            return self._bibdb[:n]
+        else:
+            res = quickview(self._bibdb, items=items)
+            return res[:n]
+
+    def open(self, idx):
+        """ open pdf file in osx """
+
+        filename = self._bibdb.at[idx, 'local-url']
+        if os.path.exists(filename):
+            self._currentpaper = py_readpaper.Paper(filename)
+            self._currentpaper.open()
+
+    def show(self, idx):
+        """ show records in idx """
+
+        return self._bibdb.iloc[idx]
+
+    def sync_filedb(self):
+        """ confirm all files have bibtex information """
+
+        self._filedb["sync"] = False
+
+        for i in range(len(self._filedb)):
+            res = self._bibdb[self._bibdb['local-url'].str.contains(self._filedb.at[i, 'local-url'])]
+            if len(res) == 1:
+                self._filedb.at[i, "sync"] = True
+            elif len(res) > 1:
+                print("... {} has multiple links {}".format(i, res.index))
+            else:
+                i_year = int(self._filedb.at[i, "year"])
+                i_author1 = self._filedb.at[i, "author_s"]
+                i_journal = self._filedb.at[i, "journal"]
+                print("... filedb [{}] : {} - {} - {}".format(i, i_year, i_author1, i_journal))
+                res = search(self._bibdb, year=i_year, author1=i_author1)
+                if len(res) > 0:
+                    print(quickview(res, items=["year", "author1", "journal"], add=False))
+                else:
+                    res = search(self._bibdb, year=i_year, journal=i_journal)
+                    if len(res) > 0:
+                        print(quickview(res, items=["year", "author1", "journal"], add=False))
 
 
-def build_pd(dirname='.'):
+    def connect_to_bib(self, fdb_idx=-1, bdb_idx=-1):
+        """ connect local-url from filedb into bibdb """
+
+        if (fdb_idx == -1) or (bdb_idx == -1):
+            print("... using sync_filedb method to find out indexes")
+            return 0
+
+        self._bibdb.at[bdb_idx, "local-url"] = self._filedb.at[fdb_idx, "local-url"]
+        return 1
+
+    def save(self):
+        """ save bibtex file and csv file """
+
+        to_bib(self._bibdb, self._bibfilename)
+        self._bibdb.to_csv(self._bibfilename.replace(".bib", ".csv"))
+
+
+
+def read_dir(dirname='.'):
     """ from file list and filenames build panda db """
 
     flist = sorted(glob.glob(dirname + '/*.pdf'))
@@ -54,19 +129,6 @@ def build_pd(dirname='.'):
     db['journal'] = journals
 
     return db
-
-
-def read_txtpdf(fdb, i, trim=True):
-    fname = fdb.iloc[i]['local-url']
-    txt = convertPDF(fname, maxpages=1)
-
-    if trim:
-        txt = txt.replace('\n\n\n\n', 'C_RETURN').replace('\n\n\n', 'C_RETURN').replace('\n\n', 'C_RETURN').replace('\n', '').replace('C_RETURN', '\n\n')
-        txt = txt.replace('\n\n\n', '\n')
-        txt = txt.replace('\n\n \n\n', '\n')
-        txt = txt.replace('\n.\n', '\n')
-
-    return txt
 
 
 def read_paperdb(filename, frombib=False):
@@ -174,10 +236,19 @@ def search(pd_db, year=0, author='', journal='', author1=''):
     return db
 
 
-def quickview(pd_db):
+def quickview(pd_db, items=[], add=True):
     """ view paperdb with essential columns """
 
-    return pd_db[["year", "author", "title", "journal"]]
+    views = ["year", "author", "title", "journal"]
+    if (len(items) > 0) and add:
+        views = views + items
+    elif (len(items) > 0) and not add:
+        views = items
+
+    #print('.... columns: {}'.format(views))
+
+    return pd_db[views]
+
 
 def check_filedb(pd_db, f_db):
     """ check file database and update local-url field """
@@ -218,4 +289,14 @@ def check_filedb(pd_db, f_db):
     print('... total files: {}'.format(len(f_db['year'])))
     print('... matched files: {}'.format(count))
 
-    #return pd_db
+
+def remove_item(pd_db, idx):
+    """ remove item by idx """
+
+    return pd_db.drop(pd_db.index[idx], inplace=True)
+
+
+def find_duplicate(pd_db):
+    """ find duplicated items """
+
+
