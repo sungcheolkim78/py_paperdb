@@ -3,13 +3,10 @@
 import pandas as pd
 import glob
 import os
-
-import bibtexparser
-from bibtexparser.bparser import BibTexParser
-from bibtexparser.bibdatabase import BibDatabase
-from bibtexparser.bwriter import BibTexWriter
+import subprocess
 
 import py_readpaper
+from bibdb import read_bib, to_bib
 
 class PaperDB(object):
     """ paper database using pandas """
@@ -17,13 +14,15 @@ class PaperDB(object):
     def __init__(self, dirname='.', bibfilename='master_db.bib', update=False):
         """ initialize database """
 
+        self._dirname = dirname
         self._bibfilename = bibfilename
         self._filedb = read_dir(dirname=dirname)
-        self._bibdb = read_paperdb(bibfilename, frombib=update)
+        self._bibdb = read_paperdb(bibfilename, update=update)
         self._currentpaper = ''
+        self._updated = False
 
-    def head(self, n=10, full=True, items=[]):
-        """ show top items """
+    def head(self, n=5, full=False, items=[]):
+        """ show old items """
 
         if full and (len(items) == 0):
             return self._bibdb[:n]
@@ -31,61 +30,230 @@ class PaperDB(object):
             res = quickview(self._bibdb, items=items)
             return res[:n]
 
-    def open(self, idx):
+    def tail(self, n=5, full=False, items=[]):
+        """ show recent items """
+
+        if full and (len(items) == 0):
+            return self._bibdb[-n:]
+        else:
+            res = quickview(self._bibdb, items=items)
+            return res[-n:]
+
+    def get_paper(self, idx=-1, filedb=False):
         """ open pdf file in osx """
 
-        filename = self._bibdb.at[idx, 'local-url']
-        if os.path.exists(filename):
-            self._currentpaper = py_readpaper.Paper(filename)
-            self._currentpaper.open()
+        if idx > -1:
+            if filedb:
+                filename = self._filedb.at[idx, 'local-url']
+            else:
+                filename = self._bibdb.at[idx, 'local-url']
+            if os.path.exists(filename):
+                self._currentpaper = py_readpaper.Paper(filename)
+                return True
+            else:
+                print('... not found: {}'.format(filename))
+                return False
 
-    def show(self, idx):
+        return False
+
+    def open(self, idx=-1, filedb=False):
+        """ open pdf file in osx """
+
+        if self.get_paper(idx, filedb=filedb):
+            self._currentpaper.open()
+        else:
+            cmd = ["Open", self._bibfilename]
+            subprocess.call(cmd)
+
+    def readpaper(self, idx=-1, n=10, filedb=False):
+        """ open paper in text mode """
+
+        if self.get_paper(idx, filedb=filedb):
+            return self._currentpaper.head(n=n)
+
+    def item(self, idx, filedb=False):
         """ show records in idx """
 
-        return self._bibdb.iloc[idx]
+        if filedb:
+            return self._filedb.iloc[idx]
+        else:
+            return self._bibdb.iloc[idx]
 
-    def sync_filedb(self):
+    def merge(self, idx1, idx2):
+        """ merge two items """
+
+        print("[{}] ....".format(idx1))
+        print(self.item(idx1))
+        print("[{}] ....".format(idx2))
+        print(self.item(idx2))
+
+    def sync_db(self):
         """ confirm all files have bibtex information """
 
-        self._filedb["sync"] = False
-
-        for i in range(len(self._filedb)):
+        for i in self._filedb.index:
             res = self._bibdb[self._bibdb['local-url'].str.contains(self._filedb.at[i, 'local-url'])]
             if len(res) == 1:
                 self._filedb.at[i, "sync"] = True
-            elif len(res) > 1:
-                print("... {} has multiple links {}".format(i, res.index))
             else:
+                # show filedb information
                 i_year = int(self._filedb.at[i, "year"])
                 i_author1 = self._filedb.at[i, "author_s"]
                 i_journal = self._filedb.at[i, "journal"]
                 print("... filedb [{}] : {} - {} - {}".format(i, i_year, i_author1, i_journal))
+
+                # multiple links
+                if len(res) > 1:
+                    print('... multiple links')
+                    print(quickview(res, items=["year", "author1", "journal"], add=False))
+                    continue
+
+                # search by year and author1
                 res = search(self._bibdb, year=i_year, author1=i_author1)
                 if len(res) > 0:
+                    print('... search by year and author')
                     print(quickview(res, items=["year", "author1", "journal"], add=False))
+
+                    link_idx = input("Enter correct bib database index: [(s)kip/(q)uit] ")
+                    if link_idx == 's':
+                        continue
+                    elif link_idx == 'q':
+                        break
+                    else:
+                        self._filedb.at[i, "sync"] = True
+                        self.update_localurl(int(link_idx), fdb_idx=i)
+
                 else:
+                    # search by year and journal
                     res = search(self._bibdb, year=i_year, journal=i_journal)
                     if len(res) > 0:
+                        print('... search by year and journal')
                         print(quickview(res, items=["year", "author1", "journal"], add=False))
 
+                        link_idx = input("Enter correct bib database index: [(s)kip/(q)uit] ")
+                        if link_idx == 's':
+                            continue
+                        elif link_idx == 'q':
+                            break
+                        else:
+                            self._filedb.at[i, "sync"] = True
+                            self.update_localurl(int(link_idx), fdb_idx=i)
 
-    def connect_to_bib(self, fdb_idx=-1, bdb_idx=-1):
+                    else:
+                        print('... no records')
+                        self.add_by_doi(i)
+
+    def update_localurl(self, idx, fdb_idx=-1, verb=True):
         """ connect local-url from filedb into bibdb """
 
-        if (fdb_idx == -1) or (bdb_idx == -1):
-            print("... using sync_filedb method to find out indexes")
-            return 0
+        if fdb_idx > -1:
+            try:
+                self._bibdb.at[idx, "local-url"] = self._filedb.at[fdb_idx, "local-url"]
+                self._updated = True
+            except:
+                print('... {}, {} out of range {}, {}'.format(idx, fdb_idx, len(self._bibdb), len(self._filedb)))
 
-        self._bibdb.at[bdb_idx, "local-url"] = self._filedb.at[fdb_idx, "local-url"]
-        return 1
+        if verb:
+            print('=== filedb ' + '='*60)
+            print(self._filedb.iloc[fdb_idx])
+            print('=== bib db ' + '='*60)
+            print(self._bibdb.iloc[idx])
 
-    def save(self):
+    def find_doi(self, idx):
+        if self.get_paper(idx):
+            return self._currentpaper.doi()
+        else:
+            return self._bibdb.at[idx, 'doi']
+
+    def find_keywords(self, idx, method='find', **kwargs):
+        if self.get_paper(idx):
+            if method == 'find':
+                return self._currentpaper.keywords()
+            else:
+                return self._currentpaper.keywords_gensim(**kwargs)
+        else:
+            return self._bibdb.at[idx, 'keywords']
+
+    def update_doi(self, idx, doi="", force=False):
+        """ update doi item """
+
+        old_doi = self._bibdb.at[idx, 'doi']
+        new_doi = doi if doi != "" else self.find_doi(idx)
+
+        print('old doi: {}\nnew doi: {}'.format(old_doi, new_doi))
+        yesno = input("Will you change? [(y)es/(n)o]") if not force else "y"
+        if yesno in ["Yes", "yes", "y", "Y"]:
+            self._bibdb.at[idx, "doi"] = new_doi
+            if self.get_paper(idx):
+                self._currentpaper._doi = new_doi
+            self._updated = True
+
+    def update_keywords(self, idx, keywords="", force=False):
+        """ update keyword item """
+
+        old_kw = self._bibdb.at[idx, 'keywords']
+        if keywords == "":
+            new_kw = self.find_keywords(idx)
+        else:
+            new_kw = keywords
+
+        print('old keywords: {}\nnew keywords: {}'.format(old_kw, new_kw))
+        if len(new_kw) > 0:
+            yesno = input("Will you change? [(y)es/(n)o]") if not force else "y"
+        else:
+            yesno = "n"
+
+        if yesno in ["Yes", "yes", "y", "Y"]:
+            if len(new_kw) > 0:
+                self._bibdb.at[idx, "keywords"] = ', '.join(new_kw)
+                self._updated = True
+
+    def addby_filedoi(self, idx, doi="", verb=True):
+        """ add bib item into bibdb using doi """
+
+        found = True
+        if self.get_paper(idx, filedb=True):
+            item = self._currentpaper.bibtex(doi=doi)
+        if item == "":
+            found = False
+
+        if found:
+            self._bibdb = self._bibdb.append(item, ignore_index=True)
+            self._bibdb.at[len(self._bibdb)-1, "local-url"] = self._filedb.at[idx, "local-url"]
+            self._bibdb.at[len(self._bibdb)-1, "rating"] = 0.0
+            self._bibdb = self._bibdb.fillna('')
+            self._filedb.at[idx, "doi"] = doi
+            self._updated = True
+
+        if verb and found:
+            print('=== filedb ' + '='*60)
+            print(self._filedb.iloc[idx])
+            print('=== bib db ' + '='*60)
+            print(self._bibdb.iloc[len(self._bibdb)-1])
+
+    def save(self, update=False):
         """ save bibtex file and csv file """
 
-        to_bib(self._bibdb, self._bibfilename)
-        self._bibdb.to_csv(self._bibfilename.replace(".bib", ".csv"))
+        if update or self._updated:
+            to_bib(self._bibdb, self._bibfilename)
+            self._bibdb.to_csv(self._bibfilename.replace(".bib", ".csv"))
+        else:
+            print('... no changes')
 
+    def reload(self, update=True):
+        """ re-read filedb and bibdb """
 
+        self._filedb = read_dir(dirname=self._dirname)
+        self._bibdb = read_paperdb(self._bibfilename, update=update)
+
+    def remove_item(self, idx):
+        """ remove item by idx """
+
+        self._updated = True
+        return self._bibdb.drop(self._bibdb.index[idx], inplace=True)
+
+    def search_sep(self, year=0, author='', journal='', author1=''):
+        res = search(self._bibdb, year=year, author=author, journal=journal, author1=author1)
+        return quickview(res)
 
 def read_dir(dirname='.'):
     """ from file list and filenames build panda db """
@@ -101,91 +269,68 @@ def read_dir(dirname='.'):
     years = []
     authors_s = []
     journals = []
-    error_flag = False
+    extras = []
+    skip = False
 
     # file name check
     for f in flist:
         fname = f.split('/')[-1]
         tmp = fname.replace('.pdf','').split('-')
+        extra = ''
 
         if len(tmp) < 3:
             print('... change fname: YEAR-AUTHOR-JOURNAL {}'.format(fname))
-            error_flag = True
+            skip = True
         elif len(tmp) > 3:
             print('... warning fname: YEAR-AUTHOR-JOURNAL {}'.format(fname))
 
             if tmp[-1] in ['1', '2', '3', '4', '5']:      # check duplicated same name, same journal, same year
-                tmp[2] = ''.join(tmp[2:-1])
+                tmp[2] = '-'.join(tmp[2:-1])
+                extra = tmp[-1]
             else:
-                tmp[2] = ''.join(tmp[2:])
+                tmp[2] = '-'.join(tmp[2:])
 
-        if not error_flag:
+        if not skip:
             years.append(tmp[0])
             authors_s.append(tmp[1].replace('_', '-'))
             journals.append(tmp[2].replace('_', ' '))
+            extras.append(extra)
 
     db['year'] = years
     db['author_s'] = authors_s
     db['journal'] = journals
+    db['extra'] = extras
+    db['doi'] = ''
+    db['sync'] = False
 
     return db
 
 
-def read_paperdb(filename, frombib=False):
+def read_paperdb(filename, update=False):
     """ read bib file or csv file """
 
     fname_csv = ''.join(filename.split('.')[:-1]) + '.csv'
-    if (not frombib) and os.path.exists(fname_csv):
+    if (not update) and os.path.exists(fname_csv):
         print('... read from {}'.format(fname_csv))
         p = pd.read_csv(fname_csv, index_col=0)
-        p = p.fillna('')
-        return p
+    else:
+        bib = read_bib(filename)
+        p = pd.DataFrame.from_dict(bib.entries)
 
-    bib = read_bib(filename)
-    return from_bib(bib, filename=fname_csv)
-
-def read_bib(filename):
-    """ read bibtex file and return bibtexparser object """
-
-    if not os.path.exists(filename):
-        print("... no bib file: {}".foramt(filename))
-        os.exit(0)
-
-    parser = BibTexParser(common_strings=True)
-    parser.ignore_nonstandard_types = False
-    parser.homogenise_fields = False
-
-    with open(filename) as f:
-        bibtex_str = f.read()
-
-    bib_database = bibtexparser.loads(bibtex_str, parser)
-    return bib_database
+    return clean_db(p)
 
 
-def to_bib(pd_db, filename):
-    """ save panda bib records into file """
-
-    items = pd_db.astype(str).to_dict("records")
-
-    db = BibDatabase()
-
-    db.entries = items
-
-    writer = BibTexWriter()
-    with open(filename, 'w') as bibfile:
-        bibfile.write(writer.write(db))
-
-
-def from_bib(bib_db, filename=""):
+def clean_db(p):
     """ read bib file and convert it to panda db and save to csv """
 
-    p = pd.DataFrame.from_dict(bib_db.entries)
-
+    # check NA
     p['read'] = p['read'].fillna('False')
     p = p.fillna('')
+
+    # check uri and obtain doi
     if "uri" in p.columns:
-        p['doi'] = p['uri'].str.slice(31, -1)
-        p = p.drop(columns=['uri'])
+        p['doi'] = p['uri'].str.slice(31, -1)    # 31 can be different depending on papers
+        p.drop(columns=['uri'], inplace=True)
 
     # check urls
     urls = p['url']
@@ -200,12 +345,19 @@ def from_bib(bib_db, filename=""):
             else:
                 urls[i] = str(urlset.pop())
         p['url'] = urls
-        p = p.drop(columns=['bdsk-file-1', 'bdsk-url-1', 'bdsk-url-2'])
+        p.drop(columns=['bdsk-url-1', 'bdsk-url-2'], inplace=True)
 
-    if filename != "":
-        newname = ''.join(filename.split('.')[:-1])+'.csv'
-        print('... save to {}'.format(newname))
-        p.to_csv(newname)
+    if "bdsk-file-1" in p.columns:
+        p.drop(columns=['bdsk-file-1'], inplace=True)
+
+    # add first author column
+    p["author1"] = [ find_author1(x) for x in p['author'].values ]
+    p["pmid"] = p["pmid"].astype(str)
+    p["pmcid"] = p["pmid"].astype(str)
+
+    # sort
+    p.sort_values(by=['year', 'author'], inplace=True)
+    p.index = range(len(p))
 
     return p
 
@@ -217,10 +369,8 @@ def search(pd_db, year=0, author='', journal='', author1=''):
         pd_db["author1"] = [ x.split(' and ')[0] for x in pd_db['author'].values ]
 
     if year != 0:
-        if (pd_db.year.dtype == 'int') and isinstance(year, int):
-            db = pd_db.loc[pd_db['year'] == year]
-        else:
-            db = pd_db.loc[pd_db.year.str.contains(str(year))]
+        pd_db['year'] = pd_db['year'].astype(int)
+        db = pd_db.loc[pd_db['year'] == year]
     else:
         db = pd_db
 
@@ -228,7 +378,7 @@ def search(pd_db, year=0, author='', journal='', author1=''):
         db = db.loc[db.author.str.contains(author)]
 
     if author1 != '':
-        db = db.loc[db.author1.str.contains(author1+",")]
+        db = db.loc[db.author1.str.contains(author1)]
 
     if journal != '':
         db = db.loc[db.journal.str.contains(journal)]
@@ -290,13 +440,29 @@ def check_filedb(pd_db, f_db):
     print('... matched files: {}'.format(count))
 
 
-def remove_item(pd_db, idx):
-    """ remove item by idx """
-
-    return pd_db.drop(pd_db.index[idx], inplace=True)
-
-
 def find_duplicate(pd_db):
     """ find duplicated items """
+    return 0
 
+
+def find_author1(authors, options='last'):
+    """ find first author's name """
+
+    names = authors.split(' and ')
+
+    n1 = names[0]
+
+    if n1.find(',') > -1:
+        firstname = ' '.join(n1.split(',')[1:])
+        lastname = n1.split(',')[0]
+    else:
+        firstname = ' '.join(n1.split(' ')[:-1])
+        lastname = n1.split(' ')[-1]
+
+    if options == 'last':
+        return lastname
+    elif options == 'first':
+        return firstname
+    else:
+        return firstname + ', ' + lastname
 
