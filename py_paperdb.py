@@ -11,12 +11,13 @@ from bibdb import read_bib, to_bib
 class PaperDB(object):
     """ paper database using pandas """
 
-    def __init__(self, dirname='.', bibfilename='master_db.bib', update=False):
+    def __init__(self, dirname='.', bibfilename='master_db.bib', update=False, debug=False):
         """ initialize database """
 
+        self._debug = debug
         self._dirname = dirname
         self._bibfilename = bibfilename
-        self._filedb = read_dir(dirname=dirname)
+        self._filedb = read_dir(dirname=dirname, debug=debug)
         self._bibdb = read_paperdb(bibfilename, update=update)
         self._currentpaper = ''
         self._updated = False
@@ -90,73 +91,64 @@ class PaperDB(object):
     def sync_db(self):
         """ confirm all files have bibtex information """
 
-        for i in self._filedb.index:
-            res = self._bibdb[self._bibdb['local-url'].str.contains(self._filedb.at[i, 'local-url'])]
+        for i in self._filedb.index[::-1]:
+            res = self._bibdb[self._bibdb['local-url'] == self._filedb.at[i, 'local-url']]
             if len(res) == 1:
                 self._filedb.at[i, "sync"] = True
             else:
                 # show filedb information
+                paper = py_readpaper.Paper(self._filedb.at[i, "local-url"])
                 i_year = int(self._filedb.at[i, "year"])
-                i_author1 = self._filedb.at[i, "author_s"]
+                i_author1 = self._filedb.at[i, "author1"]
                 i_journal = self._filedb.at[i, "journal"]
-                print("... filedb [{}] : {} - {} - {}".format(i, i_year, i_author1, i_journal))
+                print("... filedb [{}] : {} - {} - {} - {} - {}".format(i, i_year, i_author1, i_journal, paper._author, paper._title))
 
                 # multiple links
                 if len(res) > 1:
                     print('... multiple links')
-                    print(quickview(res, items=["year", "author1", "journal"], add=False))
+                    print(quickview(res, items=["year", "author1", "journal", "title"], add=False))
                     continue
 
                 # search by year and author1
-                res = search(self._bibdb, year=i_year, author1=i_author1)
+                idx1 = search(self._bibdb, year=i_year, author1=i_author1, byindex=True)
+                idx2 = search(self._bibdb, year=i_year, journal=i_journal, byindex=True)
+                idx = list(set(list(idx1) + list(idx2)))
+                res = self._bibdb.iloc[idx]
+
                 if len(res) > 0:
                     print('... search by year and author')
-                    print(quickview(res, items=["year", "author1", "journal"], add=False))
+                    print(quickview(res, items=["year", "author1", "journal", "title"], add=False))
 
-                    link_idx = input("Enter correct bib database index: [(s)kip/(q)uit] ")
+                    link_idx = input("Enter correct bib database index: [(s)kip/(q)uit/(a)dd] ")
                     if link_idx == 's':
                         continue
                     elif link_idx == 'q':
                         break
+                    elif link_idx == 'a':
+                        self.addby_filedoi(i, paper.doi())
                     else:
                         self._filedb.at[i, "sync"] = True
                         self.update_localurl(int(link_idx), fdb_idx=i)
-
                 else:
-                    # search by year and journal
-                    res = search(self._bibdb, year=i_year, journal=i_journal)
-                    if len(res) > 0:
-                        print('... search by year and journal')
-                        print(quickview(res, items=["year", "author1", "journal"], add=False))
+                    print('... no records')
+                    self.addby_filedoi(i, paper.doi())
 
-                        link_idx = input("Enter correct bib database index: [(s)kip/(q)uit] ")
-                        if link_idx == 's':
-                            continue
-                        elif link_idx == 'q':
-                            break
-                        else:
-                            self._filedb.at[i, "sync"] = True
-                            self.update_localurl(int(link_idx), fdb_idx=i)
-
-                    else:
-                        print('... no records')
-                        self.add_by_doi(i)
-
-    def update_localurl(self, idx, fdb_idx=-1, verb=True):
+    def update_localurl(self, idx, fdb_idx=-1):
         """ connect local-url from filedb into bibdb """
 
-        if fdb_idx > -1:
-            try:
-                self._bibdb.at[idx, "local-url"] = self._filedb.at[fdb_idx, "local-url"]
-                self._updated = True
-            except:
-                print('... {}, {} out of range {}, {}'.format(idx, fdb_idx, len(self._bibdb), len(self._filedb)))
+        if (fdb_idx > -1) and (fdb_idx < len(self._filedb)):
+            self._bibdb.at[idx, "local-url"] = self._filedb.at[fdb_idx, "local-url"]
 
-        if verb:
-            print('=== filedb ' + '='*60)
-            print(self._filedb.iloc[fdb_idx])
-            print('=== bib db ' + '='*60)
-            print(self._bibdb.iloc[idx])
+            if self._bibdb.at[idx, "journal"] in ["TODO", ""]:
+                self._bibdb.at[idx, "journal"] = self._filedb.at[fdb_idx, "journal"]
+
+            self._updated = True
+
+            if self._debug:
+                print('=== filedb ' + '='*60)
+                print(self._filedb.iloc[fdb_idx])
+                print('=== bib db ' + '='*60)
+                print(self._bibdb.iloc[idx])
 
     def find_doi(self, idx):
         if self.get_paper(idx):
@@ -207,7 +199,7 @@ class PaperDB(object):
                 self._bibdb.at[idx, "keywords"] = ', '.join(new_kw)
                 self._updated = True
 
-    def addby_filedoi(self, idx, doi="", verb=True):
+    def addby_filedoi(self, idx, doi=""):
         """ add bib item into bibdb using doi """
 
         found = True
@@ -224,7 +216,7 @@ class PaperDB(object):
             self._filedb.at[idx, "doi"] = doi
             self._updated = True
 
-        if verb and found:
+        if self._debug and found:
             print('=== filedb ' + '='*60)
             print(self._filedb.iloc[idx])
             print('=== bib db ' + '='*60)
@@ -252,10 +244,32 @@ class PaperDB(object):
         return self._bibdb.drop(self._bibdb.index[idx], inplace=True)
 
     def search_sep(self, year=0, author='', journal='', author1=''):
+        """ search database by separate search keywords """
+
         res = search(self._bibdb, year=year, author=author, journal=journal, author1=author1)
+
         return quickview(res)
 
-def read_dir(dirname='.'):
+    def search_all(self, sstr=None, columns=None):
+        """ search searchword for all database """
+
+        if sstr is None:
+            print('... add search string')
+            os.exit(1)
+        if columns is None:
+            columns = ['title', 'abstract', 'author', 'year', 'keywords']
+
+        sindex = []
+        for c in columns:
+            res = self._bibdb[self._bibdb.title.str.contains(sstr)].index
+            if len(res) > 0:
+                sindex.extend(res)
+
+        sindex = list(set(sindex))
+        return quickview(self._bibdb[self._bibdb.index[sinde]])
+
+
+def read_dir(dirname='.', debug=False):
     """ from file list and filenames build panda db """
 
     flist = sorted(glob.glob(dirname + '/*.pdf'))
@@ -273,7 +287,7 @@ def read_dir(dirname='.'):
     skip = False
 
     # file name check
-    for f in flist:
+    for f in sorted(flist):
         fname = f.split('/')[-1]
         tmp = fname.replace('.pdf','').split('-')
         extra = ''
@@ -282,7 +296,7 @@ def read_dir(dirname='.'):
             print('... change fname: YEAR-AUTHOR-JOURNAL {}'.format(fname))
             skip = True
         elif len(tmp) > 3:
-            print('... warning fname: YEAR-AUTHOR-JOURNAL {}'.format(fname))
+            if debug: print('... warning fname: YEAR-AUTHOR-JOURNAL {}'.format(fname))
 
             if tmp[-1] in ['1', '2', '3', '4', '5']:      # check duplicated same name, same journal, same year
                 tmp[2] = '-'.join(tmp[2:-1])
@@ -297,7 +311,7 @@ def read_dir(dirname='.'):
             extras.append(extra)
 
     db['year'] = years
-    db['author_s'] = authors_s
+    db['author1'] = authors_s
     db['journal'] = journals
     db['extra'] = extras
     db['doi'] = ''
@@ -362,10 +376,10 @@ def clean_db(p):
     return p
 
 
-def search(pd_db, year=0, author='', journal='', author1=''):
+def search(pd_db, year=0, author='', journal='', author1='', title='', keywords='', byindex=False):
     """ search panda database by keywords """
 
-    if "author1" not in pd_db.columns:
+    if ("author1" not in pd_db.columns) and ("author" in pd_db.columns):
         pd_db["author1"] = [ x.split(' and ')[0] for x in pd_db['author'].values ]
 
     if year != 0:
@@ -374,16 +388,22 @@ def search(pd_db, year=0, author='', journal='', author1=''):
     else:
         db = pd_db
 
-    if author != '':
-        db = db.loc[db.author.str.contains(author)]
+    def _search_item(db, column, value):
+        if (value != '') and (column in db.columns):
+            return db.loc[db[column].str.contains(value)]
+        else:
+            return db
 
-    if author1 != '':
-        db = db.loc[db.author1.str.contains(author1)]
+    db = _search_item(db, "author", author)
+    db = _search_item(db, "author1", author1)
+    db = _search_item(db, "journal", journal)
+    db = _search_item(db, "title", title)
+    db = _search_item(db, "keywords", keywords)
 
-    if journal != '':
-        db = db.loc[db.journal.str.contains(journal)]
-
-    return db
+    if byindex:
+        return db.index
+    else:
+        return db
 
 
 def quickview(pd_db, items=[], add=True):
@@ -398,46 +418,6 @@ def quickview(pd_db, items=[], add=True):
     #print('.... columns: {}'.format(views))
 
     return pd_db[views]
-
-
-def check_filedb(pd_db, f_db):
-    """ check file database and update local-url field """
-
-    count = 0
-    for i in range(len(f_db['year'])):
-        f_res = f_db.iloc[i]
-        p_res = search(pd_db, year=int(f_res['year']), author1=f_res['author_s'])
-
-        if len(p_res['year']) > 0:
-            found = 0
-
-            if (len(p_res['year']) == 1) and (p_res.iloc[0]['journal'] == ''):
-                found = 1
-
-            for e in p_res['journal'].values:
-                if e.lower().find(f_res['journal'].lower()) > -1:
-                    found = found + 1
-
-            if found == 0:
-                print('... check {}: {} - {} - {}'.format(i, f_res['year'], f_res['author_s'], f_res['journal']))
-                return quickview(p_res)
-
-            if found > 1:
-                if len(set(p_res['title'])) == 1:
-                    found = 1
-                else:
-                    print('... check {}: {} - {} - {}'.format(i, f_res['year'], f_res['author_s'], f_res['journal']))
-                    return quickview(p_res)
-
-            if found == 1:
-                pd_db.at[p_res.index[0],'local-url'] = f_res['local-url']
-                pd_db.at[p_res.index[0],'file'] = f_res['local-url']
-                count = count + 1
-        else:
-            print('... check {}: {} - {} - {}'.format(i, f_res['year'], f_res['author_s'], f_res['journal']))
-
-    print('... total files: {}'.format(len(f_db['year'])))
-    print('... matched files: {}'.format(count))
 
 
 def find_duplicate(pd_db):
