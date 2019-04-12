@@ -1,12 +1,15 @@
 """ py_paperdb """
 
 import pandas as pd
-import glob
 import os
 import subprocess
 
 import py_readpaper
-from bibdb import read_bib, to_bib
+from py_readpaper import find_author1
+
+from bibdb import read_bib, to_bib, read_paperdb, find_duplicate
+from filedb import read_dir, update_files, build_filedb
+
 
 class PaperDB(object):
     """ paper database using pandas """
@@ -269,113 +272,6 @@ class PaperDB(object):
         return quickview(self._bibdb[self._bibdb.index[sinde]])
 
 
-def read_dir(dirname='.', debug=False):
-    """ from file list and filenames build panda db """
-
-    flist = sorted(glob.glob(dirname + '/*.pdf'))
-    if len(flist) == 0:
-        print('... no pdf files in {}'.format(dirname))
-        return 0
-
-    db = pd.DataFrame()
-    db['local-url'] = flist
-
-    years = []
-    authors_s = []
-    journals = []
-    extras = []
-    skip = False
-
-    # file name check
-    for f in sorted(flist):
-        fname = f.split('/')[-1]
-        tmp = fname.replace('.pdf','').split('-')
-        extra = ''
-
-        if len(tmp) < 3:
-            print('... change fname: YEAR-AUTHOR-JOURNAL {}'.format(fname))
-            skip = True
-        elif len(tmp) > 3:
-            if debug: print('... warning fname: YEAR-AUTHOR-JOURNAL {}'.format(fname))
-
-            if tmp[-1] in ['1', '2', '3', '4', '5']:      # check duplicated same name, same journal, same year
-                tmp[2] = '-'.join(tmp[2:-1])
-                extra = tmp[-1]
-            else:
-                tmp[2] = '-'.join(tmp[2:])
-
-        if not skip:
-            years.append(tmp[0])
-            authors_s.append(tmp[1].replace('_', '-'))
-            journals.append(tmp[2].replace('_', ' '))
-            extras.append(extra)
-
-    db['year'] = years
-    db['author1'] = authors_s
-    db['journal'] = journals
-    db['extra'] = extras
-    db['doi'] = ''
-    db['sync'] = False
-
-    return db
-
-
-def read_paperdb(filename, update=False):
-    """ read bib file or csv file """
-
-    fname_csv = ''.join(filename.split('.')[:-1]) + '.csv'
-    if (not update) and os.path.exists(fname_csv):
-        print('... read from {}'.format(fname_csv))
-        p = pd.read_csv(fname_csv, index_col=0)
-    else:
-        bib = read_bib(filename)
-        p = pd.DataFrame.from_dict(bib.entries)
-
-    return clean_db(p)
-
-
-def clean_db(p):
-    """ read bib file and convert it to panda db and save to csv """
-
-    # check NA
-    p['read'] = p['read'].fillna('False')
-    p = p.fillna('')
-
-    # check uri and obtain doi
-    if "uri" in p.columns:
-        p['doi'] = p['uri'].str.slice(31, -1)    # 31 can be different depending on papers
-        p.drop(columns=['uri'], inplace=True)
-
-    # check urls
-    urls = p['url']
-    if "bdsk-url-1" in p.columns:
-        burl1s = p['bdsk-url-1']
-        burl2s = p['bdsk-url-2']
-        for i in range(len(urls)):
-            urlset = set([urls[i], burl1s[i], burl2s[i]])
-            urlset = urlset.difference(set(['']))
-            if len(urlset) == 0:
-                urls[i] = ''
-            else:
-                urls[i] = str(urlset.pop())
-        p['url'] = urls
-        p.drop(columns=['bdsk-url-1', 'bdsk-url-2'], inplace=True)
-
-    if "bdsk-file-1" in p.columns:
-        p.drop(columns=['bdsk-file-1'], inplace=True)
-
-    # add first author column
-    p["author1"] = [ find_author1(x) for x in p['author'].values ]
-    p["pmid"] = p["pmid"].astype(str)
-    p["pmcid"] = p["pmid"].astype(str)
-
-    # sort
-    p.sort_values(by=['year', 'author'], inplace=True)
-    p.index = range(len(p))
-
-    return p
-
-
 def search(pd_db, year=0, author='', journal='', author1='', title='', keywords='', byindex=False):
     """ search panda database by keywords """
 
@@ -419,30 +315,4 @@ def quickview(pd_db, items=[], add=True):
 
     return pd_db[views]
 
-
-def find_duplicate(pd_db):
-    """ find duplicated items """
-    return 0
-
-
-def find_author1(authors, options='last'):
-    """ find first author's name """
-
-    names = authors.split(' and ')
-
-    n1 = names[0]
-
-    if n1.find(',') > -1:
-        firstname = ' '.join(n1.split(',')[1:])
-        lastname = n1.split(',')[0]
-    else:
-        firstname = ' '.join(n1.split(' ')[:-1])
-        lastname = n1.split(' ')[-1]
-
-    if options == 'last':
-        return lastname
-    elif options == 'first':
-        return firstname
-    else:
-        return firstname + ', ' + lastname
 
