@@ -4,6 +4,7 @@ filedb.py
 update pdf file metadata
 """
 
+import os
 import glob
 import random
 import pandas as pd
@@ -11,6 +12,8 @@ import numpy as np
 from tqdm import tqdm, tqdm_notebook
 
 from py_readpaper import Paper
+from py_readpaper import read_bib
+from py_readpaper import print_bib
 
 
 # file db structure
@@ -120,3 +123,55 @@ def build_filedb(dirname='.', debug=False, order='decr'):
         paper.update(force=True)
 
     return fdb
+
+
+def check_files(dirname='.', globpattern='*.pdf', masterdbname='master_db.bib', count=False):
+    """ check pdf files and match bib data """
+
+    master_db = read_bib(masterdbname, cache=True)
+
+    flist = glob.glob(dirname + '/' + globpattern)
+
+    missing_flist = []
+    for f in flist:
+        base, fname = os.path.split(os.path.abspath(f))
+        bibfname = os.path.join(base, dirname+'/.'+fname.replace('.pdf', '.bib'))
+        if not os.path.exists(bibfname):
+            missing_flist.append(f)
+
+    if count:
+        print('... total {}/{} missing bib files'.format(len(missing_flist), len(flist)))
+        return
+
+    for i, f in enumerate(missing_flist):
+        base, fname = os.path.split(os.path.abspath(f))
+        bibfname = os.path.join(base, dirname+'/.'+fname.replace('.pdf', '.bib'))
+
+        print('[CF][{}/{}] ... no bib file: {}'.format(i, len(missing_flist), bibfname))
+        p = Paper(f)
+        print_bib(p.bib())
+
+        # confirm search
+        yesno = input("[CF] Want to serach bib (bibdb/doi/title/skip/quit): ")
+        if yesno in ["b", "B", "bibdb"]:
+            p.search_bib(bibdb=master_db, threshold=0.6)
+        elif yesno in ["t", "title"]:
+            p.doi(checktitle=True)
+        elif yesno in ["d", "D", "doi"]:
+            p.download_bib(cache=False)
+        elif yesno in ['q', 'Q']:
+            break
+
+        # confirm update
+        if yesno not in ["s", "S", "skip"]:
+            yesno = input("[CF] Continue update (yes/no/quit): ")
+        else:
+            yesno = 'y'
+
+        if yesno in ['q', 'Q', 'quit', 'Quit']:
+            break
+        elif yesno in ['yes', 'y', 'Yes', 'Y']:
+            p.update(force=True)
+        else:
+            continue
+

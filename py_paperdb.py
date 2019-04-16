@@ -4,11 +4,13 @@ import pandas as pd
 import os
 import subprocess
 
-import py_readpaper
-from py_readpaper import find_author1
+from py_readpaper import Paper
 
-from bibdb import read_bib, to_bib, read_paperdb, find_duplicate
-from filedb import read_dir, update_files, build_filedb
+from bibdb import read_bib, to_bib, read_paperdb, read_bibfiles
+from bibdb import find_bib_dict, compare_bib_dict
+from bibdb import merge_items
+
+from filedb import read_dir, update_files, build_filedb, check_files
 
 
 class PaperDB(object):
@@ -43,27 +45,29 @@ class PaperDB(object):
             res = quickview(self._bibdb, items=items)
             return res[-n:]
 
-    def get_paper(self, idx=-1, filedb=False):
+    def get_paper(self, idx, filedb=False):
         """ open pdf file in osx """
 
-        if idx > -1:
+        try:
             if filedb:
                 filename = self._filedb.at[idx, 'local-url']
             else:
                 filename = self._bibdb.at[idx, 'local-url']
             if os.path.exists(filename):
-                self._currentpaper = py_readpaper.Paper(filename)
-                return True
+                self._currentpaper = Paper(filename)
+                return self._currentpaper
             else:
                 print('... not found: {}'.format(filename))
                 return False
-
-        return False
+        except:
+            num = len(self._filedb) if filedb else len(self._bibdb)
+            print('... out of range: {}'.format(num))
+            return False
 
     def open(self, idx=-1, filedb=False):
         """ open pdf file in osx """
 
-        if self.get_paper(idx, filedb=filedb):
+        if isinstance(self.get_paper(idx, filedb=filedb), Paper):
             self._currentpaper.open()
         else:
             cmd = ["Open", self._bibfilename]
@@ -72,7 +76,7 @@ class PaperDB(object):
     def readpaper(self, idx=-1, n=10, filedb=False):
         """ open paper in text mode """
 
-        if self.get_paper(idx, filedb=filedb):
+        if isinstance(self.get_paper(idx, filedb=filedb), Paper):
             return self._currentpaper.head(n=n)
 
     def item(self, idx, filedb=False):
@@ -83,13 +87,28 @@ class PaperDB(object):
         else:
             return self._bibdb.iloc[idx]
 
-    def merge(self, idx1, idx2):
-        """ merge two items """
+    def merge_duplicates(self, threshold=0.5):
+        """ find and merge duplicates """
 
-        print("[{}] ....".format(idx1))
-        print(self.item(idx1))
-        print("[{}] ....".format(idx2))
-        print(self.item(idx2))
+        count = 0
+        index_set = set(self._bibdb.index)
+
+        while index_set:
+            i = index_set.pop()
+            item1 = self._bibdb.loc[i]
+
+            sameindex, scores = find_bib_dict(self._bibdb, item1, index=True, threshold=threshold)
+            if self._debug: print('... check [{}] - scores: {}'.format(i, scores))
+
+            if len(sameindex) > 1:
+                if self._debug: print('... [{}] found duplicates {}'.format(i, sameindex))
+                for j in sameindex:
+                    success, self._bibdb = merge_items(self._bibdb, i, j, debug=self._debug)
+                    if success:
+                        index_set.discard(j)
+                        count = count + 1
+
+        print('... total {} duplicates!'.format(count))
 
     def sync_db(self):
         """ confirm all files have bibtex information """
@@ -100,7 +119,7 @@ class PaperDB(object):
                 self._filedb.at[i, "sync"] = True
             else:
                 # show filedb information
-                paper = py_readpaper.Paper(self._filedb.at[i, "local-url"])
+                paper = Paper(self._filedb.at[i, "local-url"])
                 i_year = int(self._filedb.at[i, "year"])
                 i_author1 = self._filedb.at[i, "author1"]
                 i_journal = self._filedb.at[i, "journal"]
@@ -153,60 +172,60 @@ class PaperDB(object):
                 print('=== bib db ' + '='*60)
                 print(self._bibdb.iloc[idx])
 
-    def find_doi(self, idx):
-        if self.get_paper(idx):
-            return self._currentpaper.doi()
-        else:
-            return self._bibdb.at[idx, 'doi']
+    def find_paper(self, paper):
+        """ from Paper object find out position in bibdb """
 
-    def find_keywords(self, idx, method='find', **kwargs):
-        if self.get_paper(idx):
-            if method == 'find':
-                return self._currentpaper.keywords()
+        s_db = self._bibdb
+        if paper.doi() is not None:
+            s_db = search(s_db, doi=paper._doi)
+        elif paper._year is not None:
+            s_db = search(s_db, year=int(paper._year))
+
+        paper.bibtex()
+
+        # multiple match
+        if len(s_db) > 1:
+            if self._debug: print('... multiple matches')
+            return quickview(s_db)
+
+        # no match
+        if len(s_db) == 0:
+            if self._debug: print('... add to bibdb')
+            if paper._bib is None:
+                item = {'year': paper._year, 'journal': paper._journal, 'author': paper._author, \
+                        'author1': paper._author1, 'abstract': paper._abstract, 'keywords': paper._keywords }
             else:
-                return self._currentpaper.keywords_gensim(**kwargs)
-        else:
-            return self._bibdb.at[idx, 'keywords']
+                item = paper._bib
 
-    def update_doi(self, idx, doi="", force=False):
-        """ update doi item """
+            self._bibdb = self._bibdb.append(item, ignore_index=True)
+            idx = len(self._bibdb) - 1
 
-        old_doi = self._bibdb.at[idx, 'doi']
-        new_doi = doi if doi != "" else self.find_doi(idx)
+        # exact match
+        if len(s_db) == 1:
+            if self._debug: print('... update bibdb')
+            idx = s_db.index
 
-        print('old doi: {}\nnew doi: {}'.format(old_doi, new_doi))
-        yesno = input("Will you change? [(y)es/(n)o]") if not force else "y"
-        if yesno in ["Yes", "yes", "y", "Y"]:
-            self._bibdb.at[idx, "doi"] = new_doi
-            if self.get_paper(idx):
-                self._currentpaper._doi = new_doi
-            self._updated = True
+            if paper._bib is not None:
+                for keys in paper._bib.keys():
+                    self._bibdb.at[idx, keys] = paper._bib.get(keys)
 
-    def update_keywords(self, idx, keywords="", force=False):
-        """ update keyword item """
+        self._bibdb.at[idx, "local-url"] = paper._fname
+        self._updated = True
 
-        old_kw = self._bibdb.at[idx, 'keywords']
-        if keywords == "":
-            new_kw = self.find_keywords(idx)
-        else:
-            new_kw = keywords
+        return quickview(self._bibdb.iloc[idx])
 
-        print('old keywords: {}\nnew keywords: {}'.format(old_kw, new_kw))
-        if len(new_kw) > 0:
-            yesno = input("Will you change? [(y)es/(n)o]") if not force else "y"
-        else:
-            yesno = "n"
+    def find_wrongname(self):
+        """ find wrong file name from filedb """
 
-        if yesno in ["Yes", "yes", "y", "Y"]:
-            if len(new_kw) > 0:
-                self._bibdb.at[idx, "keywords"] = ', '.join(new_kw)
-                self._updated = True
+        condition = (self._filedb['year'] == '') | (self._filedb['author1'] == '') | (self._filedb['journal'] == '') | (self._filedb['author1'] == 'None')
 
-    def addby_filedoi(self, idx, doi=""):
+        return self._filedb[condition]
+
+    def add_paper(self, idx, doi=""):
         """ add bib item into bibdb using doi """
 
         found = True
-        if self.get_paper(idx, filedb=True):
+        if isinstance(self.get_paper(idx, filedb=True), Paper):
             item = self._currentpaper.bibtex(doi=doi)
         if item == "":
             found = False
@@ -246,10 +265,10 @@ class PaperDB(object):
         self._updated = True
         return self._bibdb.drop(self._bibdb.index[idx], inplace=True)
 
-    def search_sep(self, year=0, author='', journal='', author1=''):
+    def search_sep(self, year=0, author='', journal='', author1='', title='', doi=''):
         """ search database by separate search keywords """
 
-        res = search(self._bibdb, year=year, author=author, journal=journal, author1=author1)
+        res = search(self._bibdb, year=year, author=author, journal=journal, author1=author1, title=title, doi=doi)
 
         return quickview(res)
 
@@ -260,32 +279,33 @@ class PaperDB(object):
             print('... add search string')
             os.exit(1)
         if columns is None:
-            columns = ['title', 'abstract', 'author', 'year', 'keywords']
+            columns = ['title', 'abstract', 'author', 'keywords', 'doi']
 
         sindex = []
         for c in columns:
-            res = self._bibdb[self._bibdb.title.str.contains(sstr)].index
+            res = self._bibdb[self._bibdb[c].str.contains(sstr)].index
             if len(res) > 0:
                 sindex.extend(res)
 
-        sindex = list(set(sindex))
-        return quickview(self._bibdb[self._bibdb.index[sinde]])
+        sindex = sorted(list(set(sindex)))
+        return quickview(self._bibdb.iloc[sindex])
 
 
-def search(pd_db, year=0, author='', journal='', author1='', title='', keywords='', byindex=False):
+def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', byindex=False):
     """ search panda database by keywords """
 
     if ("author1" not in pd_db.columns) and ("author" in pd_db.columns):
         pd_db["author1"] = [ x.split(' and ')[0] for x in pd_db['author'].values ]
 
     if year != 0:
-        pd_db['year'] = pd_db['year'].astype(int)
+        pd_db.loc[:, 'year'] = pd_db.loc[:, 'year'].astype(int)
         db = pd_db.loc[pd_db['year'] == year]
     else:
         db = pd_db
 
     def _search_item(db, column, value):
         if (value != '') and (column in db.columns):
+            db[column].fillna('', inplace=True)
             return db.loc[db[column].str.contains(value)]
         else:
             return db
@@ -294,7 +314,7 @@ def search(pd_db, year=0, author='', journal='', author1='', title='', keywords=
     db = _search_item(db, "author1", author1)
     db = _search_item(db, "journal", journal)
     db = _search_item(db, "title", title)
-    db = _search_item(db, "keywords", keywords)
+    db = _search_item(db, "doi", doi)
 
     if byindex:
         return db.index
