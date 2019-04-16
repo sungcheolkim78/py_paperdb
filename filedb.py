@@ -28,7 +28,6 @@ def read_dir(dirname='.', debug=False):
         return
 
     db = pd.DataFrame()
-    db['local-url'] = flist
 
     years = []
     authors_s = []
@@ -61,66 +60,49 @@ def read_dir(dirname='.', debug=False):
             extras.append(extra)
 
     db['year'] = years
-    db['author1'] = authors_s
-    db['journal'] = journals
+    db['author1'] = ''
+    db['author'] = ''
+    db['journal'] = ''
     db['title'] = ''
     db['doi'] = ''
+    db['pmid'] = ''
+    db['pmcid'] = ''
     db['keywords'] = [[]] * len(db)
+    db['gensim'] = [[]] * len(db)
     db['abstract'] = ''
+    db['local-url'] = flist
+    db['rating'] = ''
+    db['read'] = False
+    db['has_bib'] = False
+    db['month'] = ''
+    db['volume'] = ''
+    db['booktitle'] = ''
     db['extra'] = extras
     db['sync'] = False
 
     return db
 
 
-def update_files(dirname='.', debug=False):
-    """ update pdf files with metadata """
-
-    fdb = read_dir(dirname)
-
-    for i in fdb.index[::-1]:
-        print('[{}] {} - {} - {}'.format(i, fdb.at[i, "year"], fdb.at[i, "author1"], fdb.at[i, "journal"]))
-        paper = Paper(fdb.at[i, "local-url"], debug=debug)
-        print(paper)
-        yesno = input("Continue? (skip/update/bibtex/quit/reload/abstract): ")
-        if yesno in ["q", "quit", "Q", "Quit"]:
-            break
-        if yesno in ["u", "U", "update"]:
-            paper.update()
-        if yesno in ["b", "B", "bibtex"]:
-            paper.bibtex()
-            paper.update()
-        if yesno in ["s", "S", "skip"]:
-            continue
-        if yesno in ["r", "R"]:
-            if i < len(fdb.index)-1: i = i + 1
-            continue
-        if yesno in ["a", "A"]:
-            paper.abstract()
-            paper.update()
-
-
-def build_filedb(dirname='.', debug=False, order='decr'):
+def build_filedb(dirname='.', debug=False):
     """ create database from pdf files """
 
     fdb = read_dir(dirname)
 
-    if order == 'decr':
-        idx_list = fdb.index[::-1]
-    elif order == 'incr':
-        idx_list = fdb.index
-    else:
-        idx_list = random.shuffle(fbd.index)
+    col_list = ["month", "volume", "author", "author1", "journal", "booktitle", "title", "doi", "pmid", "pmcid", "abstract" ]
 
-    for i in tqdm(idx_list):
-        paper = Paper(fdb.at[i, "local-url"], debug=debug)
+    for i in tqdm(fdb.index):
+        paper = Paper(fdb.at[i, "local-url"], debug=debug, exif=False)
 
-        fdb.at[i, "doi"] = paper.doi()
-        paper.bibtex()
-        fdb.at[i, "title"] = paper._title
-        fdb.at[i, "keywords"] = paper.keywords()
-        fdb.at[i, "abstract"] = paper.abstract(update=False)
-        paper.update(force=True)
+        for c in col_list:
+            fdb.at[i, c] = paper._bib.get(c, '')
+
+        fdb.at[i, "year"] = paper._bib.get("year", 0)
+        fdb.at[i, "keywords"] = paper._bib.get("keywords", [])
+        fdb.at[i, "read"] = paper._bib.get("read", False)
+        fdb.at[i, "rating"] = paper._bib.get("rating", 0)
+        fdb.at[i, "has_bib"] = paper._exist_bib
+        #fdb.at[i, "gensim"] = paper.keywords_gensim()
+        #fdb.at[i, "sync"] = True
 
     return fdb
 

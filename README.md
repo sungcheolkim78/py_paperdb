@@ -1,14 +1,17 @@
 # py_paperdb
 
+version 1.0 - 2019/04/01 - stage 1 - initial concept
+version 1.1 - 2019/04/15 - stage 2 - new concept
+
 ## Concepts
 
-연구를 위해서는 많은 논문을 보고 정리해야 한다. 이는 주로 검색, 다운로드, 읽기, 정리의 순서로 일어나게 된다. 이전에는 papers 라는 프로그램으로 논문들을 관리 했었는데, 1500개 이상으로 논문이 늘어 나면서 관리하는 것이 쉽지 않아 져서 machine learning을 이용해서 논문 관리를 할 수 없을까 고민하게 되었다. 그러한 목적을 가지고 우선 기본적으로 필요한 python library를 만들어 보았다.
+특정 주제에 관해 지식을 쌓기 위해서는 관련된 많은 논문을 읽어야 한다. 연구는 각 단계에 따라 검색, 다운로드, 정리, 읽기, 개인 정리의 작업이 반복되는 일이다. 논문 정리와 관련된 많은 프로그램이 있는데, papers, mandeley, endnote, bibDesk 등이 유명한데, 나는 주로 papers를 사용하여 논문들을 관리한다. 새로 인공지능을 공부하면서 지금 가지고 있는 1500개 이상의 논문들을 machine learning을 이용해서 효율적으로 논문 관리를 할 수 없을까 고민하게 되었다. 그러한 목적을 가지고 우선 기본적으로 필요한 python library를 만들어 보았다.
 
 작업 순서는 다음과 같다.
 
 1. 논문을 `YEAR-LAST NAME OF FIRST AUTHOR-JOURNAL.pdf` 의 이름으로 저장한다. 이는 기억하기 쉽고 사람들과 대화할 때에도 보통 "몇년도 누가 쓴 논문이다"라고 말하기에 이를 따른 것이다. 그러나 실제적으로는 BibDesk에서 처럼 citekey로 저장하는 것이 유일한 색인을 가능하게 하여 관리가 편하다.
 1. 가능하면 관련 citation 파일을 다운받아 같은 폴더에 저장한다. 보통 bibtex 파일을 사용하는데, 파일 이름은 중요하지 않다.
-1. `master_db.bib`에 모든 pdf 파일의 관련 정보를 저장하였다. 이 파일은 `BibDesk`를 사용하여 논문을 찾고 GUI 기반의 작업을 가능하게 한다.
+1. `master_db.bib`에 모든 pdf 파일의 관련 정보를 저장하였다. 이 파일은 `BibDesk`를 사용하여 논문을 찾고 GUI 기반의 작업을 가능하게 한다. 실제적으로 bib 파일은 1000개 정도의 항목들을 가지게 되면 읽어 들이는데 시간이 많이 걸린다. 이를 해결하기 위해 pandas의 to_dict() 함수로 dictionary로 바꾸고 DataFrame으로 전환한후 csv로 저장하여 사용하였다.
 1. 동시에 `master_db.csv`파일에 서지 정보를 `comma-separated values`로 저장하였다. `panda` 패키지로 손쉽게 관리할 수 있고 아무 text editor로도 편집할 수 있다. 처음에는 bib file이 중심이 되지만, 나중에는 csv 파일이 주가 되고 이 파일에서 bib file를 선택적으로 생성할 것이다. 예를 들어 특정 논문을 작성하기 위해 필요한 서지 정보를 모으고 이를 별도의 bib file로 출력하여 논문 정리 폴더에 넣어 두는 식이다.
 1. 논문 파일 정리과 서지 정보 정리가 끝나면 필요한 논문을 찾아 내는 일은 기본적인 검색 방법을 사용하거나 머신 러닝 알고리즘을 사용할 수 있다. recommender system를 구축할 것이다.
 1. [ ] 새로운 논문을 추가하거나 빼내는 작업을 한다.
@@ -29,6 +32,25 @@ py_paperdb.search(p, year=2010, author='Kim')
 - [ ] pdf 파일로부터 keyword를 자동으로 생성하자. gensim을 통해서 자연어 처리 알고리즘으로 abstract나 모든 본문에서 keyword를 생성할 수 있다.
 - [ ] 기존 정보 (year, author, journal)을 본문을 통해 확인할 수 있다.
 - [ ] pdf 파일을 metadata를 업데이트 한다.
+
+### Quickstart
+
+```python
+import py_paperdb
+py_paperdb.check_files(globpattern="2009-*.pdf", count=True)
+py_paperdb.check_files(globpattern="2009-*.pdf")
+```
+
+2009년도에 나온 논문들 중에 우선 bib 파일을 없는 것들의 숫자를 보여준다. 그리고 나서 각각의 파일에 대해 우선 EXIF 정보를 통해 doi, title, year, author등의 정보를 알아낸다. 그리고 부족한 정보들은 doi를 통해 다운로드 받거나 title을 통해 검색하거나 기존의 bibtex database로부터 찾아낼 수 있다. 이를 통해 bib 정보를 갱신하고 이후에 다시 이 정보를 가지고 EXIF 정보를 업데이트 한다. 각각의 파일은 pdf와 bib 파일을 갖게 된다.
+
+대부분의 파일들을
+1. bib citation 파일들을 가지고 있거나 (이 경우 초기 값이 거의 없다.)
+1. title를 통해 doi를 찾을 수 있거나 (주로 따로 title을 입력해야 한다.)
+1. doi를 알때 관련 서지 정보를 찾을 수 있다. (다른 정보들이 있어도 다시 한번 crossref를 통해 정보를 갱신한다.)
+의 세가지 경우를 통해서 meta 정보를 찾고 EXIF 정보를 업데이트 할 수 있다.
+
+연도별로 시간이 날때마다 정리해주자.
+
 
 ## bibtex file Management
 

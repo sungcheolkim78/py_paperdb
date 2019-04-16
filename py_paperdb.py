@@ -10,7 +10,7 @@ from bibdb import read_bib, to_bib, read_paperdb, read_bibfiles
 from bibdb import find_bib_dict, compare_bib_dict
 from bibdb import merge_items
 
-from filedb import read_dir, update_files, build_filedb, check_files
+from filedb import read_dir, build_filedb, check_files
 
 
 class PaperDB(object):
@@ -23,9 +23,11 @@ class PaperDB(object):
         self._dirname = dirname
         self._bibfilename = bibfilename
         self._filedb = read_dir(dirname=dirname, debug=debug)
-        self._bibdb = read_paperdb(bibfilename, update=update)
+        self._bibdb = build_filedb(dirname=dirname, debug=debug, cache=cache)
         self._currentpaper = ''
         self._updated = False
+
+    # view database
 
     def head(self, n=5, full=False, items=[]):
         """ show old items """
@@ -45,22 +47,98 @@ class PaperDB(object):
             res = quickview(self._bibdb, items=items)
             return res[-n:]
 
-    def get_paper(self, idx, filedb=False):
+    # search database
+
+    def search_sep(self, year=0, author='', journal='', author1='', title='', doi=''):
+        """ search database by separate search keywords """
+
+        res = search(self._bibdb, year=year, author=author, journal=journal, author1=author1, title=title, doi=doi)
+
+        return quickview(res)
+
+    def search_all(self, sstr=None, columns=None):
+        """ search searchword for all database """
+
+        if sstr is None:
+            print('... add search string')
+            os.exit(1)
+        if columns is None:
+            columns = ['title', 'abstract', 'author', 'keywords', 'doi']
+        if "keywords" in columns:
+            self._bibdb['keywords_csv'] = [ ','.join(x) for x in self._bibdb['keywords'] ]
+            columns.remove('keywords')
+            columns.append('keywords_csv')
+
+        sindex = []
+        for c in columns:
+            res = self._bibdb[self._bibdb[c].str.contains(sstr)].index
+            if len(res) > 0:
+                sindex.extend(res)
+
+        sindex = sorted(list(set(sindex)))
+        return quickview(self._bibdb.iloc[sindex])
+
+    def search_wrongname(self):
+        """ find wrong file name from filedb """
+
+        condition = (self._bibdb['year'] == '') | (self._bibdb['author1'] == '') | (self._bibdb['journal'] == '') | (self._bibdb['author1'] == 'None') | (self._bibdb['has_bib'] == False)
+        sindex = self._bibdb[condition].index
+
+        return quickview(self._bibdb.iloc[sindex])
+
+    def search_paper(self, paper):
+        """ from Paper object find out position in bibdb """
+
+        s_db = self._bibdb
+        if paper.doi() is not None:
+            s_db = search(s_db, doi=paper._doi)
+        elif paper._year is not None:
+            s_db = search(s_db, year=int(paper._year))
+
+        paper.bibtex()
+
+        # multiple match
+        if len(s_db) > 1:
+            if self._debug: print('... multiple matches')
+            return quickview(s_db)
+
+        # no match
+        if len(s_db) == 0:
+            if self._debug: print('... add to bibdb')
+            if paper._bib is None:
+                item = {'year': paper._year, 'journal': paper._journal, 'author': paper._author, \
+                        'author1': paper._author1, 'abstract': paper._abstract, 'keywords': paper._keywords }
+            else:
+                item = paper._bib
+
+            self._bibdb = self._bibdb.append(item, ignore_index=True)
+            idx = len(self._bibdb) - 1
+
+        # exact match
+        if len(s_db) == 1:
+            if self._debug: print('... update bibdb')
+            idx = s_db.index
+
+            if paper._bib is not None:
+                for keys in paper._bib.keys():
+                    self._bibdb.at[idx, keys] = paper._bib.get(keys)
+
+        self._bibdb.at[idx, "local-url"] = paper._fname
+        self._updated = True
+
+        return quickview(self._bibdb.iloc[idx])
+
+    # control paper
+
+    def get_paper(self, idx):
         """ open pdf file in osx """
 
         try:
-            if filedb:
-                filename = self._filedb.at[idx, 'local-url']
-            else:
-                filename = self._bibdb.at[idx, 'local-url']
-            if os.path.exists(filename):
-                self._currentpaper = Paper(filename)
-                return self._currentpaper
-            else:
-                print('... not found: {}'.format(filename))
-                return False
+            filename = self._bibdb.at[idx, 'local-url']
+            self._currentpaper = Paper(filename)
+            return self._currentpaper
         except:
-            num = len(self._filedb) if filedb else len(self._bibdb)
+            num = len(self._bibdb) if filedb else len(self._bibdb)
             print('... out of range: {}'.format(num))
             return False
 
@@ -79,13 +157,12 @@ class PaperDB(object):
         if isinstance(self.get_paper(idx, filedb=filedb), Paper):
             return self._currentpaper.head(n=n)
 
-    def item(self, idx, filedb=False):
+    def item(self, idx):
         """ show records in idx """
 
-        if filedb:
-            return self._filedb.iloc[idx]
-        else:
-            return self._bibdb.iloc[idx]
+        return self._bibdb.iloc[idx]
+
+    # manage database
 
     def merge_duplicates(self, threshold=0.5):
         """ find and merge duplicates """
@@ -172,78 +249,6 @@ class PaperDB(object):
                 print('=== bib db ' + '='*60)
                 print(self._bibdb.iloc[idx])
 
-    def find_paper(self, paper):
-        """ from Paper object find out position in bibdb """
-
-        s_db = self._bibdb
-        if paper.doi() is not None:
-            s_db = search(s_db, doi=paper._doi)
-        elif paper._year is not None:
-            s_db = search(s_db, year=int(paper._year))
-
-        paper.bibtex()
-
-        # multiple match
-        if len(s_db) > 1:
-            if self._debug: print('... multiple matches')
-            return quickview(s_db)
-
-        # no match
-        if len(s_db) == 0:
-            if self._debug: print('... add to bibdb')
-            if paper._bib is None:
-                item = {'year': paper._year, 'journal': paper._journal, 'author': paper._author, \
-                        'author1': paper._author1, 'abstract': paper._abstract, 'keywords': paper._keywords }
-            else:
-                item = paper._bib
-
-            self._bibdb = self._bibdb.append(item, ignore_index=True)
-            idx = len(self._bibdb) - 1
-
-        # exact match
-        if len(s_db) == 1:
-            if self._debug: print('... update bibdb')
-            idx = s_db.index
-
-            if paper._bib is not None:
-                for keys in paper._bib.keys():
-                    self._bibdb.at[idx, keys] = paper._bib.get(keys)
-
-        self._bibdb.at[idx, "local-url"] = paper._fname
-        self._updated = True
-
-        return quickview(self._bibdb.iloc[idx])
-
-    def find_wrongname(self):
-        """ find wrong file name from filedb """
-
-        condition = (self._filedb['year'] == '') | (self._filedb['author1'] == '') | (self._filedb['journal'] == '') | (self._filedb['author1'] == 'None')
-
-        return self._filedb[condition]
-
-    def add_paper(self, idx, doi=""):
-        """ add bib item into bibdb using doi """
-
-        found = True
-        if isinstance(self.get_paper(idx, filedb=True), Paper):
-            item = self._currentpaper.bibtex(doi=doi)
-        if item == "":
-            found = False
-
-        if found:
-            self._bibdb = self._bibdb.append(item, ignore_index=True)
-            self._bibdb.at[len(self._bibdb)-1, "local-url"] = self._filedb.at[idx, "local-url"]
-            self._bibdb.at[len(self._bibdb)-1, "rating"] = 0.0
-            self._bibdb = self._bibdb.fillna('')
-            self._filedb.at[idx, "doi"] = doi
-            self._updated = True
-
-        if self._debug and found:
-            print('=== filedb ' + '='*60)
-            print(self._filedb.iloc[idx])
-            print('=== bib db ' + '='*60)
-            print(self._bibdb.iloc[len(self._bibdb)-1])
-
     def save(self, update=False):
         """ save bibtex file and csv file """
 
@@ -256,39 +261,7 @@ class PaperDB(object):
     def reload(self, update=True):
         """ re-read filedb and bibdb """
 
-        self._filedb = read_dir(dirname=self._dirname)
-        self._bibdb = read_paperdb(self._bibfilename, update=update)
-
-    def remove_item(self, idx):
-        """ remove item by idx """
-
-        self._updated = True
-        return self._bibdb.drop(self._bibdb.index[idx], inplace=True)
-
-    def search_sep(self, year=0, author='', journal='', author1='', title='', doi=''):
-        """ search database by separate search keywords """
-
-        res = search(self._bibdb, year=year, author=author, journal=journal, author1=author1, title=title, doi=doi)
-
-        return quickview(res)
-
-    def search_all(self, sstr=None, columns=None):
-        """ search searchword for all database """
-
-        if sstr is None:
-            print('... add search string')
-            os.exit(1)
-        if columns is None:
-            columns = ['title', 'abstract', 'author', 'keywords', 'doi']
-
-        sindex = []
-        for c in columns:
-            res = self._bibdb[self._bibdb[c].str.contains(sstr)].index
-            if len(res) > 0:
-                sindex.extend(res)
-
-        sindex = sorted(list(set(sindex)))
-        return quickview(self._bibdb.iloc[sindex])
+        self._bibdb = build_filedb(dirname=dirname, debug=debug)
 
 
 def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', byindex=False):
@@ -305,7 +278,7 @@ def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', b
 
     def _search_item(db, column, value):
         if (value != '') and (column in db.columns):
-            db[column].fillna('', inplace=True)
+            db[column] = db[column].fillna('')
             return db.loc[db[column].str.contains(value)]
         else:
             return db
@@ -325,7 +298,7 @@ def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', b
 def quickview(pd_db, items=[], add=True):
     """ view paperdb with essential columns """
 
-    views = ["year", "author", "title", "journal"]
+    views = ["year", "author1", "author", "title", "journal"]
     if (len(items) > 0) and add:
         views = views + items
     elif (len(items) > 0) and not add:
