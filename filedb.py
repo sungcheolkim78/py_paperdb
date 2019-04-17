@@ -107,10 +107,13 @@ def build_filedb(dirname='.', debug=False):
     return fdb
 
 
-def check_files(dirname='.', globpattern='*.pdf', masterdbname='master_db.bib', count=False):
+def check_files(dirname='.', globpattern='*.pdf', masterdbname=None, count=False):
     """ check pdf files and match bib data """
 
-    master_db = read_bib(masterdbname, cache=True)
+    if masterdbname is None:
+        master_db = None
+    else:
+        master_db = read_bib(masterdbname, cache=True)
 
     flist = glob.glob(dirname + '/' + globpattern)
 
