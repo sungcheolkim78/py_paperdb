@@ -216,7 +216,7 @@ def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', b
 
     def _search_item(db, column, value):
         if (value != '') and (column in db.columns):
-            db[column] = db[column].fillna('')
+            db[column].fillna('', inplace=True)
             return db.loc[db[column].str.contains(value)]
         else:
             return db

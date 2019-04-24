@@ -54,7 +54,7 @@ def read_dir(dirname='.', debug=False):
                 tmp[2] = '-'.join(tmp[2:])
 
         if not skip:
-            years.append(tmp[0])
+            years.append(int(tmp[0]))
             authors_s.append(tmp[1].replace('_', '-'))
             journals.append(tmp[2].replace('_', ' '))
             extras.append(extra)
@@ -138,24 +138,24 @@ def check_files(dirname='.', globpattern='*.pdf', masterdbname=None, count=False
 
         # confirm search
         yesno = input("[CF] Want to serach bib (bibdb/doi/title/skip/quit): ")
-        if yesno in ["b", "B", "bibdb"]:
+        if yesno in ["b", "B", "bibdb", '1']:
             p.search_bib(bibdb=master_db, threshold=0.6)
-        elif yesno in ["t", "title"]:
-            p.doi(checktitle=True)
-        elif yesno in ["d", "D", "doi"]:
+        elif yesno in ["d", "D", "doi", '2']:
             p.download_bib(cache=False)
-        elif yesno in ['q', 'Q']:
+        elif yesno in ["t", "title", '3']:
+            p.doi(checktitle=True)
+        elif yesno in ['q', 'Q', '5']:
             break
 
         # confirm update
-        if yesno not in ["s", "S", "skip"]:
+        if yesno not in ["s", "S", "skip", '4']:
             yesno = input("[CF] Continue update (yes/no/quit): ")
         else:
             yesno = 'y'
 
-        if yesno in ['q', 'Q', 'quit', 'Quit']:
+        if yesno in ['q', 'Q', 'quit', 'Quit', '3']:
             break
-        elif yesno in ['yes', 'y', 'Yes', 'Y']:
+        elif yesno in ['yes', 'y', 'Yes', 'Y', '1']:
             p.update(force=True)
         else:
             continue
