@@ -107,6 +107,33 @@ def build_filedb(dirname='.', debug=False):
     return fdb
 
 
+def update_filedb(fdb, filename, debug=False):
+    """ update filedb for one file """
+
+    find_file = fdb[fdb['local-url'] == filename]
+
+    if len(find_file) == 0:
+        print('... can not find file: {}'.format(filename))
+        return
+
+    idx = find_file.index[0]
+    if debug: print(fdb.iloc[idx])
+
+    paper = Paper(fdb.at[idx, "local-url"], debug=debug, exif=False)
+
+    col_list = ["month", "volume", "author", "author1", "journal", "booktitle", "title", "doi", "pmid", "pmcid", "abstract" ]
+    for c in col_list:
+        fdb.at[idx, c] = paper._bib.get(c, '')
+
+    fdb.at[idx, "year"] = paper._bib.get("year", 0)
+    fdb.at[idx, "keywords"] = paper._bib.get("keywords", [])
+    fdb.at[idx, "read"] = paper._bib.get("read", False)
+    fdb.at[idx, "rating"] = paper._bib.get("rating", 0)
+    fdb.at[idx, "has_bib"] = paper._exist_bib
+
+    return fdb
+
+
 def check_files(dirname='.', globpattern='*.pdf', masterdbname=None, count=False):
     """ check pdf files and match bib data """
 

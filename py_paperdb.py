@@ -3,6 +3,13 @@
 import pandas as pd
 import os
 import subprocess
+import numpy as np
+import re
+import tqdm
+import pickle
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
 
 from py_readpaper import Paper
 
@@ -11,8 +18,9 @@ from bibdb import find_bib_dict, compare_bib_dict
 from bibdb import merge_items
 from bibdb import clean_db
 
-from filedb import read_dir, build_filedb, check_files
+from filedb import read_dir, build_filedb, check_files, update_filedb
 
+from utils import safe_pickle_dump
 
 class PaperDB(object):
     """ paper database using pandas """
@@ -23,8 +31,15 @@ class PaperDB(object):
         self._debug = debug
         self._dirname = dirname
         self._bibfilename = '.paperdb.csv'
+        self._metafname = './meta.p'
+        self._tfidfname = './tfidf.p'
+        self._simfname = './sim.p'
+        self._ldafname = './lda.p'
         self._currentpaper = ''
         self._updated = False
+        self._sim_dict = {}
+        self._vocab = {}
+        self._idf = []
 
         if cache:
             if os.path.exists(self._bibfilename):
@@ -90,11 +105,18 @@ class PaperDB(object):
         sindex = sorted(list(set(sindex)))
         return quickview(self._bibdb.iloc[sindex])
 
-    def search_wrongname(self):
+    def search_wrongname(self, columns=['doi', 'year', 'author1', 'journal']):
         """ find wrong file name from filedb """
 
-        condition = (self._bibdb['year'] == '') | (self._bibdb['author1'] == '') | (self._bibdb['journal'] == '') | (self._bibdb['author1'] == 'None') | (self._bibdb['has_bib'] == False)
+        condition = (self._bibdb['has_bib'] == False)
+
+        for c in columns:
+            condition = condition | (self._bibdb[c] == '') | (self._bibdb[c] == 'nan')
+
+        #condition = (self._bibdb['doi'] == '') | (self._bibdb['year'] == '') | (self._bibdb['author1'] == '') | (self._bibdb['journal'] == '') | (self._bibdb['author1'] == 'None') | (self._bibdb['has_bib'] == False)
         sindex = self._bibdb[condition].index
+
+        print('... total {}/{} incorrect papers'.format(len(sindex), len(self._bibdb)))
 
         return quickview(self._bibdb.iloc[sindex])
 
@@ -150,7 +172,7 @@ class PaperDB(object):
             self._currentpaper = Paper(filename)
             return self._currentpaper
         except:
-            print('... out of range: {}'.format(len(self._bibdb)))
+            print('... error reading: {}/{}'.format(idx, len(self._bibdb)))
             return False
 
     def open(self, idx=-1):
@@ -189,17 +211,156 @@ class PaperDB(object):
 
         to_bib(self._bibdb, self._bibfilename)
 
-    def update(self):
+    def update(self, idx=-1):
         """ save database """
 
+        if idx > -1:
+            self._bibdb = update_filedb(self._bibdb, self._bibdb.at[idx, 'local-url'], debug=self._debug)
+            self._updated = True
+
         if self._updated:
+            print('... save database to {}'.format(self._bibfilename))
             self._bibdb.to_csv(self._bibfilename)
 
     def reload(self, update=True):
         """ re-read bibdb """
 
-        self._bibdb = build_filedb(dirname=dirname, debug=debug)
+        self._bibdb = build_filedb(dirname=self._dirname, debug=debug)
+        print('... save database to {}'.format(self._bibfilename))
         self._bibdb.to_csv(self._bibfilename)
+
+    # recommender system
+
+    def build_recommender(self, update=False):
+        """ using text contents build vectorized representation of papers """
+
+        pids = range(len(self._bibdb))
+
+        if os.path.exists(self._tfidfname) and os.path.exists(self._metafname) and (not update):
+            print('... read from {}, {}'.format(self._tfidfname, self._metafname))
+            out = pickle.load(open(self._tfidfname, 'rb'))
+            self._X = out['X']
+            meta = pickle.load(open(self._metafname, 'rb'))
+            self._vocab = meta['vocab']
+            self._idf = meta['idf']
+        else:
+            print('... read all texts')
+            corpus = []
+            for i in tqdm.tqdm(pids):
+                self.paper(i)
+                corpus.append(self._currentpaper.contents(split=False, update=False))
+
+            # clean up text
+            corpus = [ re.sub('\\n', ' ', str(x)) for x in corpus ]
+            corpus = [ re.sub("\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}",'',str(x)) for x in corpus ]
+            corpus = [ re.sub("(http://.*?\s)|(http://.*)",'',str(x)) for x in corpus ]
+            corpus = [ x.replace("royalsocietypublishing", "") for x in corpus ]
+            self.corpus = corpus
+
+            # prepare vectorizer
+            v = TfidfVectorizer(input='content',
+                    encoding='utf-8', decode_error='replace', strip_accents='unicode',
+                    lowercase=True, analyzer='word', stop_words='english',
+                    token_pattern=r'(?u)\b[a-zA-Z_][a-zA-Z0-9_]+\b',
+                    ngram_range=(1, 3), max_features = 5000,
+                    norm='l2', use_idf=True, smooth_idf=True, sublinear_tf=True,
+                    max_df=1.0, min_df=1)
+            v.fit(corpus)
+            self._X = v.transform(corpus)
+
+            self._vocab = v.vocabulary_
+            self._idf = v._tfidf.idf_
+
+            # write full matrix out
+            out = {}
+            out['X'] = self._X
+            print('... writing: {}'.format(self._tfidfname))
+            safe_pickle_dump(out, self._tfidfname)
+
+            # writing metatdata
+            out = {}
+            out['vocab'] = v.vocabulary_
+            out['idf'] = v._tfidf.idf_
+            out['pids'] = pids
+            print('... writing: {}'.format(self._metafname))
+            safe_pickle_dump(out, self._metafname)
+
+        print("...precomputing nearest neighbor queries in batches...")
+        #X = X.todense() # originally it's a sparse matrix
+        X = self._X.todense().astype(np.float32)
+        self._sim_dict = {}
+        batch_size = 200
+        for i in range(0,len(pids),batch_size):
+            i1 = min(len(pids), i+batch_size)
+            xquery = X[i:i1] # BxD
+            ds = -np.asarray(np.dot(X, xquery.T)) #NxD * DxB => NxB
+            IX = np.argsort(ds, axis=0) # NxB
+            for j in range(i1-i):
+                self._sim_dict[pids[i+j]] = [pids[q] for q in list(IX[:50,j])]
+
+            print('%d/%d...' % (i, len(pids)))
+
+        print('... writing: {}'.format(self._simfname))
+        safe_pickle_dump(self._sim_dict, self._simfname)
+
+    def recommend_similar(self, idx=0, n=5, items=[]):
+        """ recommend similar paper using feature matrix """
+
+        if len(self._sim_dict) == 0:
+            self.build_recommender()
+
+        rec_list = self._bibdb.iloc[self._sim_dict[idx][:n]]
+        return quickview(rec_list, items=items)
+
+    def build_topiclist(self, n_com=20, max_iter=10, n_keys=8, update=False):
+        """ make feature matrix using LDA """
+
+        if os.path.exists(self._ldafname) and (not update):
+            out = pickle.load(open(self._ldafname, 'rb'))
+            self._lda = out['lda']
+            self._topics = out['topics']
+        else:
+            if len(self._sim_dict) == 0:
+                self.build_recommender()
+
+            X = self._X.todense().astype(np.float32)
+            lda = LatentDirichletAllocation(n_components=n_com,
+                    learning_method='batch',
+                    max_iter=max_iter, verbose=1,
+                    n_jobs=-1, random_state=0)
+
+            print("... computing decomposition matrix: n_com {}, max_iter {}".format(n_com, max_iter))
+            paper_topics = lda.fit_transform(X)
+            feature_names = sorted(list(self._vocab.keys()))
+
+            for topic_idx, topic in enumerate(lda.components_):
+                msg = 'Topic [{}]: '.format(topic_idx)
+                msg += ', '.join([feature_names[i] for i in topic.argsort()[:-n_keys-1:-1]])
+                print(msg)
+
+            # writing lda result
+            out = {}
+            out['lda'] = paper_topics
+            out['topics'] = lda.components_
+            print('... writing: {}'.format(self._ldafname))
+            safe_pickle_dump(out, self._ldafname)
+            self._lda = paper_topics
+            self._topics = lda.components_
+
+    def recommend_topic(self, tid=0, n=5, n_com=20, n_keys=8, items=[]):
+        """ recommend papers using decomposition """
+
+        if len(self._lda) == 0:
+            self.build_topiclist(n_com=ncom, n_keys=n_keys)
+
+        topic = self._topics[tid]
+        feature_names = sorted(list(self._vocab.keys()))
+        msg = " ".join([feature_names[i] for i in topic.argsort()[:-n_keys:-1]])
+        print('Topic {}: {}'.format(tid, msg))
+
+        idxlist = np.argsort(self._lda[:, tid])[::-1]
+        lda_list = self._bibdb.iloc[idxlist[:n]]
+        return quickview(lda_list, items=items)
 
 
 def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', byindex=False):
@@ -236,7 +397,7 @@ def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', b
 def quickview(pd_db, items=[], add=True):
     """ view paperdb with essential columns """
 
-    views = ["year", "author1", "author", "title", "journal"]
+    views = ["year", "author1", "author", "title", "journal", "doi"]
     if (len(items) > 0) and add:
         views = views + items
     elif (len(items) > 0) and not add:
