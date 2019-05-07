@@ -1,24 +1,30 @@
 """ py_paperdb """
 
 import pandas as pd
-import os
-import subprocess
 import numpy as np
+import os
 import re
 import tqdm
 import pickle
+import subprocess
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 
 from py_readpaper import Paper
 
-from bibdb import read_bib, to_bib, read_paperdb, read_bibfiles
+from bibdb import read_bib
+from bibdb import to_bib
+from bibdb import read_paperdb
+from bibdb import read_bibfiles
 from bibdb import find_bib_dict, compare_bib_dict
 from bibdb import merge_items
 from bibdb import clean_db
 
-from filedb import read_dir, build_filedb, check_files, update_filedb
+from filedb import read_dir
+from filedb import build_filedb
+from filedb import check_files
+from filedb import update_filedb
 
 from utils import safe_pickle_dump
 
@@ -164,12 +170,12 @@ class PaperDB(object):
 
     # control paper
 
-    def paper(self, idx):
+    def paper(self, idx, exif=True):
         """ open pdf file in osx """
 
         try:
             filename = self._bibdb.at[idx, 'local-url']
-            self._currentpaper = Paper(filename)
+            self._currentpaper = Paper(filename, exif=exif, debug=self._debug)
             return self._currentpaper
         except:
             print('... error reading: {}/{}'.format(idx, len(self._bibdb)))
@@ -247,7 +253,7 @@ class PaperDB(object):
             print('... read all texts')
             corpus = []
             for i in tqdm.tqdm(pids):
-                self.paper(i)
+                self.paper(i, exif=False)
                 corpus.append(self._currentpaper.contents(split=False, update=False))
 
             # clean up text
@@ -255,6 +261,9 @@ class PaperDB(object):
             corpus = [ re.sub("\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}",'',str(x)) for x in corpus ]
             corpus = [ re.sub("(http://.*?\s)|(http://.*)",'',str(x)) for x in corpus ]
             corpus = [ x.replace("royalsocietypublishing", "") for x in corpus ]
+            corpus = [ x.replace("annualreviews", "") for x in corpus ]
+            corpus = [ x.replace("science reports", "") for x in corpus ]
+            corpus = [ x.replace("nature publishing group", "") for x in corpus ]
             self.corpus = corpus
 
             # prepare vectorizer
@@ -285,23 +294,27 @@ class PaperDB(object):
             print('... writing: {}'.format(self._metafname))
             safe_pickle_dump(out, self._metafname)
 
-        print("...precomputing nearest neighbor queries in batches...")
-        #X = X.todense() # originally it's a sparse matrix
-        X = self._X.todense().astype(np.float32)
-        self._sim_dict = {}
-        batch_size = 200
-        for i in range(0,len(pids),batch_size):
-            i1 = min(len(pids), i+batch_size)
-            xquery = X[i:i1] # BxD
-            ds = -np.asarray(np.dot(X, xquery.T)) #NxD * DxB => NxB
-            IX = np.argsort(ds, axis=0) # NxB
-            for j in range(i1-i):
-                self._sim_dict[pids[i+j]] = [pids[q] for q in list(IX[:50,j])]
+        if os.path.exists(self._simfname) and (not update):
+            print('... read from {}'.format(self._simfname))
+            self._sim_dict = pickle.load(open(self._simfname, 'rb'))
+        else:
+            print("...precomputing nearest neighbor queries in batches...")
+            #X = X.todense() # originally it's a sparse matrix
+            X = self._X.todense().astype(np.float32)
+            self._sim_dict = {}
+            batch_size = 200
+            for i in range(0,len(pids),batch_size):
+                i1 = min(len(pids), i+batch_size)
+                xquery = X[i:i1] # BxD
+                ds = -np.asarray(np.dot(X, xquery.T)) #NxD * DxB => NxB
+                IX = np.argsort(ds, axis=0) # NxB
+                for j in range(i1-i):
+                    self._sim_dict[pids[i+j]] = [pids[q] for q in list(IX[:50,j])]
 
-            print('%d/%d...' % (i, len(pids)))
+                print('%d/%d...' % (i, len(pids)))
 
-        print('... writing: {}'.format(self._simfname))
-        safe_pickle_dump(self._sim_dict, self._simfname)
+            print('... writing: {}'.format(self._simfname))
+            safe_pickle_dump(self._sim_dict, self._simfname)
 
     def recommend_similar(self, idx=0, n=5, items=[]):
         """ recommend similar paper using feature matrix """
@@ -362,6 +375,15 @@ class PaperDB(object):
         lda_list = self._bibdb.iloc[idxlist[:n]]
         return quickview(lda_list, items=items)
 
+    def word_list(self):
+        """ print feature names """
+
+        if self._vocab is None:
+            self.build_recommender()
+
+        feature_names = sorted(list(self._vocab.keys()))
+        v = pd.DataFrame(self._idf, index=feature_names, columns=['idf'])
+        return v.sort_values(by='idf')
 
 def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', byindex=False):
     """ search panda database by keywords """
