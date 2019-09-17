@@ -254,7 +254,8 @@ class PaperDB(object):
             corpus = []
             for i in tqdm.tqdm(pids):
                 self.paper(i, exif=False)
-                corpus.append(self._currentpaper.contents(split=False, update=False))
+                txt = '{}\n{}'.format(self._currentpaper.abstract(), self._currentpaper.contents(split=False, update=False))
+                corpus.append(txt)
 
             # clean up text
             corpus = [ re.sub('\\n', ' ', str(x)) for x in corpus ]

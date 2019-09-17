@@ -134,13 +134,8 @@ def update_filedb(fdb, filename, debug=False):
     return fdb
 
 
-def check_files(dirname='.', globpattern='*.pdf', masterdbname=None, count=False):
+def check_files(dirname='.', globpattern='*.pdf', count=False, debug=False):
     """ check pdf files and match bib data """
-
-    if masterdbname is None:
-        master_db = None
-    else:
-        master_db = read_bib(masterdbname, cache=True)
 
     flist = glob.glob(dirname + '/' + globpattern)
 
@@ -160,30 +155,7 @@ def check_files(dirname='.', globpattern='*.pdf', masterdbname=None, count=False
         bibfname = os.path.join(base, dirname+'/.'+fname.replace('.pdf', '.bib'))
 
         print('[CF][{}/{}] ... no bib file: {}'.format(i, len(missing_flist), bibfname))
-        p = Paper(f)
-        print_bib(p.bib())
 
-        # confirm search
-        yesno = input("[CF] Want to serach bib (bibdb/doi/title/skip/quit): ")
-        if yesno in ["b", "B", "bibdb", '1']:
-            p.search_bib(bibdb=master_db, threshold=0.6)
-        elif yesno in ["d", "D", "doi", '2']:
-            p.download_bib(cache=False)
-        elif yesno in ["t", "title", '3']:
-            p.doi(checktitle=True)
-        elif yesno in ['q', 'Q', '5']:
-            break
-
-        # confirm update
-        if yesno not in ["s", "S", "skip", '4']:
-            yesno = input("[CF] Continue update (yes/no/quit): ")
-        else:
-            yesno = 'y'
-
-        if yesno in ['q', 'Q', 'quit', 'Quit', '3']:
-            break
-        elif yesno in ['yes', 'y', 'Yes', 'Y', '1']:
-            p.update(force=True)
-        else:
-            continue
+        p = Paper(f, debug=debug)
+        p.interactive_update()
 
