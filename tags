@@ -1,0 +1,119 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+BibDatabase	bibdb.py	/^from bibtexparser.bibdatabase import BibDatabase$/;"	i
+BibTexParser	bibdb.py	/^from bibtexparser.bparser import BibTexParser$/;"	i
+BibTexWriter	bibdb.py	/^from bibtexparser.bwriter import BibTexWriter$/;"	i
+LatentDirichletAllocation	py_paperdb.py	/^from sklearn.decomposition import LatentDirichletAllocation$/;"	i
+Paper	filedb.py	/^from py_readpaper import Paper$/;"	i
+Paper	py_paperdb.py	/^from py_readpaper import Paper$/;"	i
+PaperDB	py_paperdb.py	/^class PaperDB(object):$/;"	c
+TfidfVectorizer	py_paperdb.py	/^from sklearn.feature_extraction.text import TfidfVectorizer$/;"	i
+__init__	py_paperdb.py	/^    def __init__(self, dirname='.', cache=True, debug=False):$/;"	m	class:PaperDB
+_get_score	bibdb.py	/^    def _get_score(item1, item2, colname, s):$/;"	f	function:compare_bib_dict
+_search_item	py_paperdb.py	/^    def _search_item(db, column, value):$/;"	f	function:search
+_tempfile	utils.py	/^def _tempfile(*args, **kws):$/;"	f
+arxiv2bib	bibdb.py	/^from arxiv2bib import arxiv2bib$/;"	i
+author	setup.py	/^    author='Sungcheol Kim',  # Optional$/;"	v
+author_email	setup.py	/^    author_email='sungcheol.kim78@gmail.com',  # Optional$/;"	v
+bibdb	py_paperdb.py	/^import bibdb$/;"	i
+biblist	proc_newfiles.py	/^    biblist = glob.glob('.\/.*.bib')$/;"	v
+bibtexparser	bibdb.py	/^import bibtexparser$/;"	i
+build_filedb	filedb.py	/^def build_filedb(dirname='.', debug=False):$/;"	f
+build_recommender	py_paperdb.py	/^    def build_recommender(self, update=False):$/;"	m	class:PaperDB
+build_topiclist	py_paperdb.py	/^    def build_topiclist(self, n_com=20, max_iter=10, n_keys=8, update=False):$/;"	m	class:PaperDB
+check_files	filedb.py	/^def check_files(dirname='.', globpattern='*.pdf', count=False, debug=False):$/;"	f
+classifiers	setup.py	/^    classifiers=[  # Optional$/;"	v
+clean_db	bibdb.py	/^def clean_db(p):$/;"	f
+compare_bib_dict	bibdb.py	/^def compare_bib_dict(item1, item2):$/;"	f
+contextmanager	utils.py	/^from contextlib import contextmanager$/;"	i
+convertPDF	__init__.py	/^from pdf_read import convertPDF$/;"	i
+description	setup.py	/^    description='paper journal bibtex database',  # Optional$/;"	v
+dst_dir	proc_newfiles.py	/^dst_dir = '..\/papers'$/;"	v
+entry_points	setup.py	/^    entry_points={  # Optional$/;"	v
+export_bib	py_paperdb.py	/^    def export_bib(self, selection=False, bibfilename=None):$/;"	m	class:PaperDB
+extras_require	setup.py	/^    extras_require={  # Optional$/;"	v
+filedb	py_paperdb.py	/^import filedb$/;"	i
+find_author1	bibdb.py	/^from py_readpaper import find_author1$/;"	i
+find_bib_dict	bibdb.py	/^def find_bib_dict(pd_db, bib_dict, index=False, threshold=0.5, debug=False):$/;"	f
+find_packages	setup.py	/^from setuptools import setup, find_packages$/;"	i
+glob	bibdb.py	/^import glob$/;"	i
+glob	filedb.py	/^import glob$/;"	i
+glob	proc_newfiles.py	/^import glob$/;"	i
+head	py_paperdb.py	/^    def head(self, n=5, full=False, items=[]):$/;"	m	class:PaperDB
+here	setup.py	/^here = path.abspath(path.dirname(__file__))$/;"	v
+install_requires	setup.py	/^    install_requires=['pandas'],  # Optional$/;"	v
+item	py_paperdb.py	/^    def item(self, idx):$/;"	m	class:PaperDB
+keywords	setup.py	/^    keywords='pdf journal bibtex metadata',  # Optional$/;"	v
+long_description	setup.py	/^    long_description = f.read()$/;"	v
+long_description	setup.py	/^    long_description=long_description,  # Optional$/;"	v
+long_description_content_type	setup.py	/^    long_description_content_type='text\/markdown',  # Optional (see note above)$/;"	v
+merge_items	bibdb.py	/^def merge_items(pd_db, idx1, idx2, debug=False):$/;"	f
+name	setup.py	/^    name='py_paperdb',  # Required$/;"	v
+np	bibdb.py	/^import numpy as np$/;"	i
+np	filedb.py	/^import numpy as np$/;"	i
+np	py_paperdb.py	/^import numpy as np$/;"	i
+open	py_paperdb.py	/^    def open(self, idx=-1):$/;"	m	class:PaperDB
+open	setup.py	/^from io import open$/;"	i
+open_atomic	utils.py	/^def open_atomic(filepath, *args, **kwargs):$/;"	f
+os	bibdb.py	/^import os$/;"	i
+os	filedb.py	/^import os$/;"	i
+os	proc_newfiles.py	/^import os$/;"	i
+os	py_paperdb.py	/^import os$/;"	i
+os	utils.py	/^import os$/;"	i
+p	proc_newfiles.py	/^    p = py_paperdb.PaperDB(dirname='..\/papers', cache=False)$/;"	v
+package_data	setup.py	/^    package_data={  # Optional$/;"	v
+packages	setup.py	/^    packages=find_packages(exclude=['contrib', 'docs', 'tests']),  # Required$/;"	v
+paper	py_paperdb.py	/^    def paper(self, idx, exif=True):$/;"	m	class:PaperDB
+path	setup.py	/^from os import path$/;"	i
+pd	bibdb.py	/^import pandas as pd$/;"	i
+pd	filedb.py	/^import pandas as pd$/;"	i
+pd	py_paperdb.py	/^import pandas as pd$/;"	i
+pdflist	proc_newfiles.py	/^    pdflist = glob.glob('.\/*.pdf')$/;"	v
+pickle	py_paperdb.py	/^import pickle$/;"	i
+pickle	utils.py	/^import pickle$/;"	i
+print_bib	filedb.py	/^from py_readpaper import print_bib$/;"	i
+py_paperdb	proc_newfiles.py	/^import py_paperdb$/;"	i
+quickview	py_paperdb.py	/^def quickview(pd_db, items=[], add=True):$/;"	f
+random	filedb.py	/^import random$/;"	i
+re	py_paperdb.py	/^import re$/;"	i
+re	utils.py	/^import re$/;"	i
+read_bib	bibdb.py	/^def read_bib(filename):$/;"	f
+read_bib	filedb.py	/^from py_readpaper import read_bib$/;"	i
+read_bibfiles	bibdb.py	/^def read_bibfiles(globpattern="*.bib", update=False):$/;"	f
+read_dir	filedb.py	/^def read_dir(dirname='.', debug=False):$/;"	f
+read_paperdb	bibdb.py	/^def read_paperdb(filename, update=False):$/;"	f
+readpaper	py_paperdb.py	/^    def readpaper(self, idx=-1, n=10):$/;"	m	class:PaperDB
+recommend_similar	py_paperdb.py	/^    def recommend_similar(self, idx=0, n=5, items=[]):$/;"	m	class:PaperDB
+recommend_topic	py_paperdb.py	/^    def recommend_topic(self, tid=0, n=5, n_com=20, n_keys=8, items=[]):$/;"	m	class:PaperDB
+reload	py_paperdb.py	/^    def reload(self, update=True):$/;"	m	class:PaperDB
+requests	bibdb.py	/^import requests$/;"	i
+safe_pickle_dump	py_paperdb.py	/^from utils import safe_pickle_dump$/;"	i
+safe_pickle_dump	utils.py	/^def safe_pickle_dump(obj, fname):$/;"	f
+search	py_paperdb.py	/^def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', byindex=False):$/;"	f
+search_all	py_paperdb.py	/^    def search_all(self, sstr=None, columns=None):$/;"	m	class:PaperDB
+search_paper	py_paperdb.py	/^    def search_paper(self, paper):$/;"	m	class:PaperDB
+search_sep	py_paperdb.py	/^    def search_sep(self, year=0, author='', journal='', author1='', title='', doi=''):$/;"	m	class:PaperDB
+search_wrongname	py_paperdb.py	/^    def search_wrongname(self, columns=['doi', 'year', 'author1', 'journal']):$/;"	m	class:PaperDB
+selection_add	py_paperdb.py	/^    def selection_add(self, idxs):$/;"	m	class:PaperDB
+selection_bibtex	py_paperdb.py	/^    def selection_bibtex(self):$/;"	m	class:PaperDB
+selection_remove	py_paperdb.py	/^    def selection_remove(self, idxs):$/;"	m	class:PaperDB
+selection_reset	py_paperdb.py	/^    def selection_reset(self):$/;"	m	class:PaperDB
+selection_view	py_paperdb.py	/^    def selection_view(self):$/;"	m	class:PaperDB
+setup	setup.py	/^from setuptools import setup, find_packages$/;"	i
+subprocess	py_paperdb.py	/^import subprocess$/;"	i
+tail	py_paperdb.py	/^    def tail(self, n=5, full=False, items=[]):$/;"	m	class:PaperDB
+tempfile	utils.py	/^import tempfile$/;"	i
+to_bib	bibdb.py	/^def to_bib(pd_db, filename, fromDict=False):$/;"	f
+tqdm	filedb.py	/^from tqdm import tqdm, tqdm_notebook$/;"	i
+tqdm	py_paperdb.py	/^import tqdm$/;"	i
+tqdm_notebook	filedb.py	/^from tqdm import tqdm, tqdm_notebook$/;"	i
+update	py_paperdb.py	/^    def update(self, idx=-1):$/;"	m	class:PaperDB
+update_filedb	filedb.py	/^def update_filedb(fdb, filename, debug=False):$/;"	f
+url	setup.py	/^    url='https:\/\/github.com\/sungcheolkim78\/py_paperdb',  # Optional$/;"	v
+version	setup.py	/^    version='1.0.0.dev1',  # Required$/;"	v
+word_list	py_paperdb.py	/^    def word_list(self):$/;"	m	class:PaperDB
+yesno	proc_newfiles.py	/^yesno = input("Continue to move files? (yes\/no) ")$/;"	v

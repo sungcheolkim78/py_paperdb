@@ -13,18 +13,8 @@ from sklearn.decomposition import LatentDirichletAllocation
 
 from py_readpaper import Paper
 
-from bibdb import read_bib
-from bibdb import to_bib
-from bibdb import read_paperdb
-from bibdb import read_bibfiles
-from bibdb import find_bib_dict, compare_bib_dict
-from bibdb import merge_items
-from bibdb import clean_db
-
-from filedb import read_dir
-from filedb import build_filedb
-from filedb import check_files
-from filedb import update_filedb
+import bibdb
+import filedb
 
 from utils import safe_pickle_dump
 
@@ -46,39 +36,41 @@ class PaperDB(object):
         self._sim_dict = {}
         self._vocab = {}
         self._idf = []
+        self._selection = set()
 
-        if cache:
-            if os.path.exists(self._bibfilename):
-                p = pd.read_csv(self._bibfilename, index_col=0)
-                self._bibdb = clean_db(p)
-                if debug: print('... read from {}'.format(self._bibfilename))
-            else:
-                self._bibdb = build_filedb(dirname=dirname, debug=debug)
-                self._bibdb.to_csv(self._bibfilename)
-                if debug: print('... save to {}'.format(self._bibfilename))
+        if cache and os.path.exists(self._bibfilename):
+            p = pd.read_csv(self._bibfilename, index_col=0)
+            self._bibdb = bibdb.clean_db(p)
+            if debug: print('... read from {}'.format(self._bibfilename))
         else:
-            p = build_filedb(dirname=dirname, debug=debug)
-            self._bibdb = clean_db(p)
+            p = filedb.build_filedb(dirname=dirname, debug=debug)
+            self._bibdb = bibdb.clean_db(p)
+            self._bibdb.to_csv(self._bibfilename)
+            if debug: print('... save to {}'.format(self._bibfilename))
 
     # view database
 
-    def head(self, n=5, full=False, items=[]):
-        """ show old items """
+    def head(self, n=5, full=False, newest=False, items=[]):
+        """ show old papers """
+
+        if newest:
+            temp = self._bibdb.sort_values('import_date', ascending=False)[:n]
+            items.append('import_date')
+        else:
+            temp = self._bibdb[:n]
 
         if full and (len(items) == 0):
-            return self._bibdb[:n]
+            return temp
         else:
-            res = quickview(self._bibdb, items=items)
-            return res[:n]
+            return quickview(temp, items=items)
 
     def tail(self, n=5, full=False, items=[]):
-        """ show recent items """
+        """ show recently published papers """
 
         if full and (len(items) == 0):
             return self._bibdb[-n:]
         else:
-            res = quickview(self._bibdb, items=items)
-            return res[-n:]
+            return quickview(self._bibdb[-n:], items=items)
 
     # search database
 
@@ -86,6 +78,16 @@ class PaperDB(object):
         """ search database by separate search keywords """
 
         res = search(self._bibdb, year=year, author=author, journal=journal, author1=author1, title=title, doi=doi)
+
+        if len(res.index) > 0:
+            if len(res.index) > 10:
+                yesno = input('Will you include all these selection? [Yes/No] ')
+                if yesno in ['Yes', 'Y', 'y', 'yes']:
+                    if self._debug: print('... save to selection: {}'.format(res.index.values))
+                    self._selection = self._selection | set(res.index)
+            else:
+                if self._debug: print('... save to selection: {}'.format(res.index.values))
+                self._selection = self._selection | set(res.index)
 
         return quickview(res)
 
@@ -108,8 +110,11 @@ class PaperDB(object):
             if len(res) > 0:
                 sindex.extend(res)
 
-        sindex = sorted(list(set(sindex)))
-        return quickview(self._bibdb.iloc[sindex])
+        if len(sindex) > 0:
+            sindex = sorted(list(set(sindex)))
+            self._selection = self._selection.union(set(sindex))
+
+            return quickview(self._bibdb.iloc[sindex])
 
     def search_wrongname(self, columns=['doi', 'year', 'author1', 'journal']):
         """ find wrong file name from filedb """
@@ -168,6 +173,42 @@ class PaperDB(object):
 
         return quickview(self._bibdb.iloc[idx])
 
+    # selection operations
+
+    def selection_view(self):
+        """ print selection """
+
+        if len(self._selection) > 0:
+            if self._debug: print('... # of selection: {}'.format(len(self._selection)))
+            return quickview(self._bibdb.iloc[list(self._selection)])
+
+    def selection_bibtex(self):
+        """ print bibtex items in selection """
+
+        if len(self._selection) == 0:
+            return
+
+        for i in list(self._selection):
+            self.paper(i)
+            self._currentpaper.bibtex()
+
+    def selection_reset(self):
+        """ reset all selections """
+
+        yesno = input("Delete all selection? [Yes/No] ")
+        if yesno in ['Y', 'Yes', 'y', 'yes']:
+            self._selection = set()
+
+    def selection_add(self, idxs):
+        """ add papers by index """
+
+        self._selection = self._selection | set(idxs)
+
+    def selection_remove(self, idxs):
+        """ remove papers by index """
+
+        self._selection = self._selection - set(idxs)
+
     # control paper
 
     def paper(self, idx, exif=True):
@@ -212,16 +253,23 @@ class PaperDB(object):
 
     # manage database
 
-    def export_bib(self, update=False):
+    def export_bib(self, selection=False, bibfilename=None):
         """ save bibtex file and csv file """
 
-        to_bib(self._bibdb, self._bibfilename)
+        if selection:
+            if bibfilename is None:
+                bibfilename = 'selection.bib'
+            bibdb.to_bib(self._bibdb.iloc[list(self._selection)], bibfilename)
+            with open(bibfilename) as f:
+                print(f.readlines())
+        else:
+            bibdb.to_bib(self._bibdb, self._bibfilename)
 
     def update(self, idx=-1):
         """ save database """
 
         if idx > -1:
-            self._bibdb = update_filedb(self._bibdb, self._bibdb.at[idx, 'local-url'], debug=self._debug)
+            self._bibdb = filedb.update_filedb(self._bibdb, self._bibdb.at[idx, 'local-url'], debug=self._debug)
             self._updated = True
 
         if self._updated:
@@ -231,7 +279,7 @@ class PaperDB(object):
     def reload(self, update=True):
         """ re-read bibdb """
 
-        self._bibdb = build_filedb(dirname=self._dirname, debug=debug)
+        self._bibdb = filedb.build_filedb(dirname=self._dirname, debug=debug)
         print('... save database to {}'.format(self._bibfilename))
         self._bibdb.to_csv(self._bibfilename)
 
@@ -385,6 +433,7 @@ class PaperDB(object):
         feature_names = sorted(list(self._vocab.keys()))
         v = pd.DataFrame(self._idf, index=feature_names, columns=['idf'])
         return v.sort_values(by='idf')
+
 
 def search(pd_db, year=0, author='', journal='', author1='', title='', doi='', byindex=False):
     """ search panda database by keywords """
