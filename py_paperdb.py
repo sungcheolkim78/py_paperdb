@@ -182,13 +182,17 @@ class PaperDB(object):
             if self._debug: print('... # of selection: {}'.format(len(self._selection)))
             return quickview(self._bibdb.iloc[list(self._selection)])
 
-    def selection_bibtex(self):
+    def selection_bibtex(self, n=-1):
         """ print bibtex items in selection """
 
         if len(self._selection) == 0:
             return
+        if n == -1:
+            n = len(self._selection)
 
-        for i in list(self._selection):
+        for c, i in enumerate(list(self._selection)):
+            if c > n:
+                return
             self.paper(i)
             self._currentpaper.bibtex()
 
