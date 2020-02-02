@@ -65,8 +65,20 @@ py_paperdb.check_files(globpattern="2009-*.pdf")
 
 ### [step 2] Search papers and export metadata as bibtex
 
+논문들을 통해 데이터베이스를 만들고 특정 조건으로 논문들을 찾는다.
+
 ```python
 import py_paperdb
 p = py_paperdb.PaperDB()
 p.search_sep(author1='Kim')
 ```
+
+찾아진 논문들은 selection으로 저장되며 다음의 명령어들을 통해 사용된다. 
+
+```python
+p.selection_view()
+p.selection_remove([2,5])
+p.selection_bibtex()
+```
+
+마지막 명령어는 선택된 논문들의 서지 정보를 bibtex 형식으로 출력한다. 
