@@ -131,16 +131,21 @@ class PaperDB(object):
 
         return quickview(self._bibdb.iloc[sindex])
 
-    def search_paper(self, paper):
+    def search_new(self, n=10):
+        """ print out recently added papers """
+
+        return quickview(self._bibdb.sort_values(by='import_date')[-n:])
+
+    def search_paper(self, paper, as_index=False):
         """ from Paper object find out position in bibdb """
 
         s_db = self._bibdb
-        if paper.doi() is not None:
-            s_db = search(s_db, doi=paper._doi)
-        elif paper._year is not None:
-            s_db = search(s_db, year=int(paper._year))
+        if paper.doi() != '':
+            s_db = search(s_db, doi=paper.doi())
+        elif paper.year() is not None:
+            s_db = search(s_db, year=int(paper.year()))
 
-        paper.bibtex()
+        #paper.bibtex()
 
         # multiple match
         if len(s_db) > 1:
@@ -162,7 +167,7 @@ class PaperDB(object):
         # exact match
         if len(s_db) == 1:
             if self._debug: print('... update bibdb')
-            idx = s_db.index
+            idx = s_db.index[0]
 
             if paper._bib is not None:
                 for keys in paper._bib.keys():
@@ -171,7 +176,10 @@ class PaperDB(object):
         self._bibdb.at[idx, 'local-url'] = paper._fname
         self._updated = True
 
-        return quickview(self._bibdb.iloc[idx])
+        if as_index:
+            return idx
+        else:
+            return quickview(self._bibdb.iloc[idx])
 
     # selection operations
 

@@ -117,7 +117,7 @@ def update_filedb(fdb, filename, debug=False):
     fdb.at[idx, "keywords"] = paper._bib.get("keywords", [])
     fdb.at[idx, "rating"] = paper._bib.get("rating", 0)
     fdb.at[idx, "has_bib"] = paper._exist_bib
-    fdb.at[idx, "import_date"] = datetime.datetime.fromtimestamp(os.path.getmtime(fdb.at[i, "local-url"]))
+    fdb.at[idx, "import_date"] = datetime.datetime.fromtimestamp(os.path.getmtime(paper._fname))
 
     return fdb
 
