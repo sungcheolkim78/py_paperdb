@@ -1,45 +1,53 @@
 # py_paperdb
 
-version 1.0 - 2019/04/01 - stage 1 - initial concept
-version 1.1 - 2019/04/15 - stage 2 - new concept
+여러 논문을 읽고 관리하는 일은 연구를 하는 모든 사람이 부딪히게 되는 문제이다. 모두가 각각의 방법을 가지고 있고 어느 것이 가장 효율적인지는 말할 수 없다. 나도 많은 시간동안 논문 정리를 여러가지 방법으로 해 보았고 각각의 방법에는 모두 각각의 문제점을 가지고 있다. 그동안 이용한 가장 대표적인 방법은 특정 프로그램을 이용하고 각각의 프로그램들이 제공하는 기능들을 충실히 따르는 것이었다. 가장 많이 사용했던 프로그램은 papers 였는데, 최근 버전을 보니 여러가지 기능들이 사라져 버렸고 출판사의 제제를 받은 것처럼 보여 사용하기가 불편하였다. 그러던 중 파이썬을 이용해서 내가 필요로 하는 작업들을 자동화하고 또한 기계 학습을 도입하여 논문을 읽고 정리해보고자 관련 라이브러리를 만들게 되었다. Andrew Kapathy의 arXiv 정리 논문 사이트가 많은 영감을 주었다. 
 
-## Concepts
+## 버전들 
 
-특정 주제에 관해 지식을 쌓기 위해서는 관련된 많은 논문을 읽어야 한다. 연구는 각 단계에 따라 검색, 다운로드, 정리, 읽기, 개인 정리의 작업이 반복되는 일이다. 논문 정리와 관련된 많은 프로그램이 있는데, papers, mandeley, endnote, bibDesk 등이 유명한데, 나는 주로 papers를 사용하여 논문들을 관리한다. 새로 인공지능을 공부하면서 지금 가지고 있는 1500개 이상의 논문들을 machine learning을 이용해서 효율적으로 논문 관리를 할 수 없을까 고민하게 되었다. 그러한 목적을 가지고 우선 기본적으로 필요한 python library를 만들어 보았다.
+- version 1.0 - 2019/04/01 - stage 1 - initial concept
+- version 1.1 - 2019/04/15 - stage 2 - new concept
+- version 1.2 - 2020/02/01 - stage 3 - documentation
 
-작업 순서는 다음과 같다.
+## Install
+
+필요한 라이브러리들은 다음과 같다. 
+
+- pandas 
+- numpy
+- bibtexparser
+- requests
+- arxiv2bib
+- py_readpaper 
+
+github에서 리퍼지토리(repository)를 클론(clone)한 후에 해당 디렉토리로 들어가서 pip3을 이용하여 설치한다. 필요한 라이브러리들을 함께 설치할 것이다. 현재는 파이썬3 버전에서만 실행 가능한지 확인하였다. 
+
+```
+pip3 install -e .
+```
+
+## Usage
+
+### Initial Concepts
+
+특정 주제에 관해 지식을 쌓기 위해서는 관련된 많은 논문을 읽어야 한다. 연구는 각 단계에 따라 검색, 다운로드, 정리, 읽기, 개인 정리, 논문 찾기, 서지 정보 출력의 작업이 반복되는 일이다. 이를 구체적으로 다음과 같이 나누어 보았다. 
+
+- `관심있는 논문 검색 및 다운로드`: 이는 학교의 계정을 이용하거나 회사가 제공하는 저널의 논문을 다운받거나 무료로 제공하는 pdf 파일을 구하는 것이다. 여러가지 방법이 있으나 이 라이브러리에서는 어떤 방식으로든 구해진 pdf 파일로부터 작업을 시작한다.
+- `서지 정보 찾기 및 메타(meta) 정보 입력하기`: 이 라이브러리에서는 crossref.org의 API를 사용하여 제목으로부터 혹은 DOI으로부터 bibtex과 호환되는 정보를 찾아내고 이를 각 파일에 해당하는 숨겨진 파일(hidden file)을 만들어서 저장한다. 이는 두가지 단계로 진행된다.
+  - 첫번째는 tmp-paper 폴더에 다운받은 파일을 모두 모아놓고 최대한 자동적으로 서지 정보를 찾아내고 이를 `년도-저자명-저널.pdf` 형식의 이름으로 저장한다. 또한 pdf 파일에 최대한 meta 정보를 입력하여 다시 저장한다. 
+  - 두번째는 처리가 끝난 논문들을 paper 폴더에 저장하고 자동적으로 찾아내지 못한 정보들을 jupyter notebook을 통해 상호 반응적(interactive)으로 서지 정보를 입력한다. 
+- `관심 논문 찾기 및 읽기`: 이렇게 모여진 논문들을 읽고 또한 저자별로 혹은 주제별로 혹은 기계학습에 따른 유사성등으로 검색한다. 
+- `특정 주제에 대한 논문들 서지 정보 출력하기`: 대부분 논문 읽기의 마지막 단계는 쓰고자 하는 논문의 참조 문헌 목록을 작성하기 위함일 것이다. 이를 위해서 검색된 논문들의 리스트를 작성하고 필요한 논문들을 추가/삭제한 후 이를 bibtex 형식으로 출력한다. 
+
+### [step 1] Tag meta data to downloaded papers
 
 1. 논문을 `YEAR-LAST NAME OF FIRST AUTHOR-JOURNAL.pdf` 의 이름으로 저장한다. 이는 기억하기 쉽고 사람들과 대화할 때에도 보통 "몇년도 누가 쓴 논문이다"라고 말하기에 이를 따른 것이다. 그러나 실제적으로는 BibDesk에서 처럼 citekey로 저장하는 것이 유일한 색인을 가능하게 하여 관리가 편하다.
 1. 가능하면 관련 citation 파일을 다운받아 같은 폴더에 저장한다. 보통 bibtex 파일을 사용하는데, 파일 이름은 중요하지 않다.
-1. `master_db.bib`에 모든 pdf 파일의 관련 정보를 저장하였다. 이 파일은 `BibDesk`를 사용하여 논문을 찾고 GUI 기반의 작업을 가능하게 한다. 실제적으로 bib 파일은 1000개 정도의 항목들을 가지게 되면 읽어 들이는데 시간이 많이 걸린다. 이를 해결하기 위해 pandas의 to_dict() 함수로 dictionary로 바꾸고 DataFrame으로 전환한후 csv로 저장하여 사용하였다.
-1. 동시에 `master_db.csv`파일에 서지 정보를 `comma-separated values`로 저장하였다. `panda` 패키지로 손쉽게 관리할 수 있고 아무 text editor로도 편집할 수 있다. 처음에는 bib file이 중심이 되지만, 나중에는 csv 파일이 주가 되고 이 파일에서 bib file를 선택적으로 생성할 것이다. 예를 들어 특정 논문을 작성하기 위해 필요한 서지 정보를 모으고 이를 별도의 bib file로 출력하여 논문 정리 폴더에 넣어 두는 식이다.
-1. 논문 파일 정리과 서지 정보 정리가 끝나면 필요한 논문을 찾아 내는 일은 기본적인 검색 방법을 사용하거나 머신 러닝 알고리즘을 사용할 수 있다. recommender system를 구축할 것이다.
-1. [ ] 새로운 논문을 추가하거나 빼내는 작업을 한다.
 
-## Quick start
-
-```python
-import py_paperdb
-p = py_paperdb.read_paperdb(FILENAME)
-py_paperdb.search(p, year=2010, author='Kim')
+```
+$ ./proc_newfiles.py
 ```
 
-## pdf file Management
-
-우선 파일명에서 `year`, `author_s`, `journal`의 정보를 알아낼 수 있다. (이는 수동으로 해야 한다.) `pdftotext`나 `pdfminer`를 사용해서 pdf에서 텍스트를 추출할 수 있는데, pdf 파일 자체가 글을 적는 용도가 아니라 그림을 저장하는 용도에 가까운 포맷이라 거기서 따로 서지정보를 알아내기가 쉽지 않다.
-
-- [ ] pdf 파일로부터 논문의 title을 뽑아내자. 자동으로 모든 것을 할 수 없다면 몇가지 옵션으로 추려내고 선택을 사용자에게 맡기자.
-- [ ] pdf 파일로부터 keyword를 자동으로 생성하자. gensim을 통해서 자연어 처리 알고리즘으로 abstract나 모든 본문에서 keyword를 생성할 수 있다.
-- [ ] 기존 정보 (year, author, journal)을 본문을 통해 확인할 수 있다.
-- [ ] pdf 파일을 metadata를 업데이트 한다.
-
-### Quickstart
-
-```python
-import py_paperdb
-py_paperdb.check_files(globpattern="2009-*.pdf", count=True)
-py_paperdb.check_files(globpattern="2009-*.pdf")
-```
+### [step 2] Maintain paper database
 
 2009년도에 나온 논문들 중에 우선 bib 파일을 없는 것들의 숫자를 보여준다. 그리고 나서 각각의 파일에 대해 우선 EXIF 정보를 통해 doi, title, year, author등의 정보를 알아낸다. 그리고 부족한 정보들은 doi를 통해 다운로드 받거나 title을 통해 검색하거나 기존의 bibtex database로부터 찾아낼 수 있다. 이를 통해 bib 정보를 갱신하고 이후에 다시 이 정보를 가지고 EXIF 정보를 업데이트 한다. 각각의 파일은 pdf와 bib 파일을 갖게 된다.
 
@@ -49,20 +57,28 @@ py_paperdb.check_files(globpattern="2009-*.pdf")
 1. doi를 알때 관련 서지 정보를 찾을 수 있다. (다른 정보들이 있어도 다시 한번 crossref를 통해 정보를 갱신한다.)
 의 세가지 경우를 통해서 meta 정보를 찾고 EXIF 정보를 업데이트 할 수 있다.
 
-연도별로 시간이 날때마다 정리해주자.
-
-
-## bibtex file Management
-
-기본적으로 python dictionary 형태의 정보를 가지고 있으면 Bibtexparser 패키지로 쉽게 pandas DataFrame과 csv, bib 간의 변환이 가능하다. master file을 가지고 있거나 csv 파일을 기본으로 하고 내용이 정확한지 확인하거나 모자란 정보를 채우는데 도움이 되는 함수들을 만든다.
-
-- [ ] 여러개의 bibtex 아이템들 중에 가장 정보를 많이 가지고 있는 것으로 merge하고 duplicated items을 분별한다.
-- [ ] pdf 파일 정보로 부터 실제 파일과 `local-url`로 연결 시킨다.
-
-### Examples
-
 ```python
-file_db = py_paper.build_pd(DIR)
-bib_db = py_paper.read_bib(FILENAME)
+import py_paperdb
+py_paperdb.check_files(globpattern="2009-*.pdf", count=True)
+py_paperdb.check_files(globpattern="2009-*.pdf")
 ```
 
+### [step 2] Search papers and export metadata as bibtex
+
+논문들을 통해 데이터베이스를 만들고 특정 조건으로 논문들을 찾는다.
+
+```python
+import py_paperdb
+p = py_paperdb.PaperDB()
+p.search_sep(author1='Kim')
+```
+
+찾아진 논문들은 selection으로 저장되며 다음의 명령어들을 통해 사용된다. 
+
+```python
+p.selection_view()
+p.selection_remove([2,5])
+p.selection_bibtex()
+```
+
+마지막 명령어는 선택된 논문들의 서지 정보를 bibtex 형식으로 출력한다. 
